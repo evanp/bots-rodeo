@@ -1,0 +1,28 @@
+{
+  "name": "bots-rodeo",
+  "version": "0.1.0-dev",
+  "description": "server-side ActivityPub bot framework",
+  "main": "index.js",
+  "scripts": {
+    "test": "node --test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+ssh://git@github.com/evanp/bots-rodeo.git"
+  },
+  "keywords": [
+    "activitypub",
+    "fediverse",
+    "bots",
+    "server"
+  ],
+  "author": "Evan Prodromou <evan@prodromou.name>",
+  "license": "LGPL-3.0-or-later",
+  "bugs": {
+    "url": "https://github.com/evanp/bots-rodeo/issues"
+  },
+  "homepage": "https://github.com/evanp/bots-rodeo#readme",
+  "dependencies": {
+    "activitystrea.ms": "^2.1.3"
+  }
+}
