@@ -47,6 +47,25 @@ describe('ObjectStorage', async () => {
       assert.ok(err instanceof NoSuchObjectError)
     }
   })
+  it('can get a collection', async () => {
+    const collection = await ObjectStorage.getCollection(doc.id, 'replies')
+    assert.equal(typeof(collection), 'object')
+    assert.equal(typeof(collection.id), 'string')
+    assert.equal(collection.id, `${doc.id}/replies`)
+    assert.equal(collection.type, 'https://www.w3.org/ns/activitystreams#OrderedCollection')
+    assert.equal(collection.totalItems, 0)
+    assert.equal(collection.first.id, `${doc.id}/replies/page/1`)
+    assert.equal(collection.last.id, `${doc.id}/replies/page/1`)
+  })
+  it('can get a collection page', async () => {
+    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    assert.equal(typeof page, 'object')
+    assert.equal(page.id, `${doc.id}/replies/page/1`)
+    assert.equal(page.type, 'https://www.w3.org/ns/activitystreams#OrderedCollectionPage')
+    assert.equal(page.partOf.id, `${doc.id}/replies`)
+    assert.ok(!page.next)
+    assert.ok(!page.prev)
+  })
   it('can terminate', async () => {
     await ObjectStorage.terminate()
   })
