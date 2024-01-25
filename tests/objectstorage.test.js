@@ -11,6 +11,7 @@ describe('ObjectStorage', async () => {
   let doc = null
   let doc2 = null
   let connection = null
+  let storage = null
   before(async () => {
     doc = await as2import({
       '@context': 'https://www.w3.org/ns/activitystreams',
@@ -34,13 +35,14 @@ describe('ObjectStorage', async () => {
     await connection.close()
   })
   it('can initialize', async () => {
-    await ObjectStorage.initialize(connection)
+    storage = new ObjectStorage(connection)
+    await storage.initialize()
   })
   it('can create a new object', async () => {
-    await ObjectStorage.create(doc)
+    await storage.create(doc)
   })
   it('can read a created object', async () => {
-    const read = await ObjectStorage.read(doc.id)
+    const read = await storage.read(doc.id)
   })
   it('can update a created object', async () => {
     const doc2 = await as2import({
@@ -50,21 +52,21 @@ describe('ObjectStorage', async () => {
       name: 'test2',
       content: 'test2'
     })
-    await ObjectStorage.update(doc2)
-    const read = await ObjectStorage.read(doc2.id)
+    await storage.update(doc2)
+    const read = await storage.read(doc2.id)
     assert.equal(read.name.get('en'), 'test2')
   })
   it('can delete a created object', async () => {
-    await ObjectStorage.delete(doc)
+    await storage.delete(doc)
     try {
-      const read = await ObjectStorage.read(doc.id)
+      const read = await storage.read(doc.id)
       assert.fail('should not be able to read deleted object')
     } catch (err) {
       assert.ok(err instanceof NoSuchObjectError)
     }
   })
   it('can get a collection', async () => {
-    const collection = await ObjectStorage.getCollection(doc.id, 'replies')
+    const collection = await storage.getCollection(doc.id, 'replies')
     assert.equal(typeof(collection), 'object')
     assert.equal(typeof(collection.id), 'string')
     assert.equal(collection.id, `${doc.id}/replies`)
@@ -74,7 +76,7 @@ describe('ObjectStorage', async () => {
     assert.equal(collection.last.id, `${doc.id}/replies/page/1`)
   })
   it('can get a collection page', async () => {
-    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    const page = await storage.getCollectionPage(doc.id, 'replies', 1)
     assert.equal(typeof page, 'object')
     assert.equal(page.id, `${doc.id}/replies/page/1`)
     assert.equal(page.type, 'https://www.w3.org/ns/activitystreams#OrderedCollectionPage')
@@ -84,13 +86,13 @@ describe('ObjectStorage', async () => {
     assert.ok(!page.items)
   })
   it('can add to a collection', async () => {
-    await ObjectStorage.addToCollection(doc.id, 'replies', doc2)
-    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    await storage.addToCollection(doc.id, 'replies', doc2)
+    const page = await storage.getCollectionPage(doc.id, 'replies', 1)
     assert.ok(Array.from(page.items).find(item => item.id === doc2.id))
   })
   it('can remove from a collection', async () => {
-    await ObjectStorage.removeFromCollection(doc.id, 'replies', doc2)
-    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    await storage.removeFromCollection(doc.id, 'replies', doc2)
+    const page = await storage.getCollectionPage(doc.id, 'replies', 1)
     assert.ok(!page.items)
   })
   it('can add many items to a collection', async () => {
@@ -103,19 +105,16 @@ describe('ObjectStorage', async () => {
         content: 'test',
         inReplyTo: doc.id
       })
-      await ObjectStorage.addToCollection(doc.id, 'replies', reply)
+      await storage.addToCollection(doc.id, 'replies', reply)
     }
-    const collection = await ObjectStorage.getCollection(doc.id, 'replies')
+    const collection = await storage.getCollection(doc.id, 'replies')
     assert.equal(collection.totalItems, 100)
     assert.equal(collection.first.id, `${doc.id}/replies/page/5`)
     assert.equal(collection.last.id, `${doc.id}/replies/page/1`)
-    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 3)
+    const page = await storage.getCollectionPage(doc.id, 'replies', 3)
     assert.ok(page.next)
     // assert.ok(page.prev)
     assert.ok(page.items)
     assert.equal(Array.from(page.items).length, 20)
-  })
-  it('can terminate', async () => {
-    await ObjectStorage.terminate()
   })
 })
