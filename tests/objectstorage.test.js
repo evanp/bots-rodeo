@@ -8,6 +8,7 @@ const as2import = promisify(as2.import)
 
 describe('ObjectStorage', async () => {
   let doc = null
+  let doc2 = null
   before(async () => {
     doc = await as2import({
       '@context': 'https://www.w3.org/ns/activitystreams',
@@ -15,6 +16,14 @@ describe('ObjectStorage', async () => {
       type: 'Note',
       name: 'test',
       content: 'test'
+    })
+    doc2 = await as2import({
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      id: 'https://social.example/users/test/note/2',
+      type: 'Note',
+      name: 'test',
+      content: 'test',
+      inReplyTo: doc.id
     })
   })
   it('can initialize', async () => {
@@ -65,6 +74,39 @@ describe('ObjectStorage', async () => {
     assert.equal(page.partOf.id, `${doc.id}/replies`)
     assert.ok(!page.next)
     assert.ok(!page.prev)
+    assert.ok(!page.items)
+  })
+  it('can add to a collection', async () => {
+    await ObjectStorage.addToCollection(doc.id, 'replies', doc2)
+    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    assert.ok(Array.from(page.items).find(item => item.id === doc2.id))
+  })
+  it('can remove from a collection', async () => {
+    await ObjectStorage.removeFromCollection(doc.id, 'replies', doc2)
+    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 1)
+    assert.ok(!page.items)
+  })
+  it('can add many items to a collection', async () => {
+    for (let i = 3; i < 103; i++) {
+      const reply = await as2import({
+        '@context': 'https://www.w3.org/ns/activitystreams',
+        id: `https://social.example/users/test/note/${i}`,
+        type: 'Note',
+        name: 'test',
+        content: 'test',
+        inReplyTo: doc.id
+      })
+      await ObjectStorage.addToCollection(doc.id, 'replies', reply)
+    }
+    const collection = await ObjectStorage.getCollection(doc.id, 'replies')
+    assert.equal(collection.totalItems, 100)
+    assert.equal(collection.first.id, `${doc.id}/replies/page/5`)
+    assert.equal(collection.last.id, `${doc.id}/replies/page/1`)
+    const page = await ObjectStorage.getCollectionPage(doc.id, 'replies', 3)
+    assert.ok(page.next)
+    // assert.ok(page.prev)
+    assert.ok(page.items)
+    assert.equal(Array.from(page.items).length, 20)
   })
   it('can terminate', async () => {
     await ObjectStorage.terminate()
