@@ -1,14 +1,16 @@
-import { describe, it, before } from 'node:test'
+import { describe, it, before, after } from 'node:test'
 import as2 from 'activitystrea.ms'
 import assert from 'node:assert'
 import { ObjectStorage, NoSuchObjectError } from '../lib/objectstorage.js'
 import { promisify } from 'node:util'
+import { Sequelize } from "sequelize"
 
 const as2import = promisify(as2.import)
 
 describe('ObjectStorage', async () => {
   let doc = null
   let doc2 = null
+  let connection = null
   before(async () => {
     doc = await as2import({
       '@context': 'https://www.w3.org/ns/activitystreams',
@@ -25,9 +27,14 @@ describe('ObjectStorage', async () => {
       content: 'test',
       inReplyTo: doc.id
     })
+    connection = new Sequelize('sqlite::memory:', {logging: false})
+    await connection.authenticate()
+  })
+  after(async () => {
+    await connection.close()
   })
   it('can initialize', async () => {
-    await ObjectStorage.initialize('sqlite::memory:')
+    await ObjectStorage.initialize(connection)
   })
   it('can create a new object', async () => {
     await ObjectStorage.create(doc)
