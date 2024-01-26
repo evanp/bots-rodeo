@@ -32,7 +32,8 @@ describe('BotContext', () => {
         await context.setData('key1', 'value1')
     })
     it('can get a value', async () => {
-        await context.getData('key1')
+        const value = await context.getData('key1')
+        assert.equal(value, 'value1')
     })
     it('can delete a value', async () => {
         await context.deleteData('key1')
