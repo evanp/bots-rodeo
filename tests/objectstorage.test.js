@@ -3,7 +3,7 @@ import as2 from 'activitystrea.ms'
 import assert from 'node:assert'
 import { ObjectStorage, NoSuchObjectError } from '../lib/objectstorage.js'
 import { promisify } from 'node:util'
-import { Sequelize } from "sequelize"
+import { Sequelize } from 'sequelize'
 
 const as2import = promisify(as2.import)
 
@@ -28,7 +28,7 @@ describe('ObjectStorage', async () => {
       content: 'test',
       inReplyTo: doc.id
     })
-    connection = new Sequelize('sqlite::memory:', {logging: false})
+    connection = new Sequelize('sqlite::memory:', { logging: false })
     await connection.authenticate()
   })
   after(async () => {
@@ -67,8 +67,8 @@ describe('ObjectStorage', async () => {
   })
   it('can get a collection', async () => {
     const collection = await storage.getCollection(doc.id, 'replies')
-    assert.equal(typeof(collection), 'object')
-    assert.equal(typeof(collection.id), 'string')
+    assert.equal(typeof (collection), 'object')
+    assert.equal(typeof (collection.id), 'string')
     assert.equal(collection.id, `${doc.id}/replies`)
     assert.equal(collection.type, 'https://www.w3.org/ns/activitystreams#OrderedCollection')
     assert.equal(collection.totalItems, 0)

@@ -26,7 +26,13 @@
   "dependencies": {
     "activitystrea.ms": "^2.1.3",
     "jsonld": "^8.3.2",
+    "nanoid": "^5.0.4",
+    "node-fetch": "^3.3.2",
     "sequelize": "^6.35.2",
     "sqlite3": "^5.1.7"
+  },
+  "devDependencies": {
+    "nock": "^13.5.0",
+    "standard": "^17.1.0"
   }
 }
