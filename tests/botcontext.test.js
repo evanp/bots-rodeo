@@ -37,6 +37,11 @@ describe('BotContext', () => {
   let distributor = null
   let context = null
   let postInbox2 = 0
+  let postInbox3 = 0
+  let postInbox4 = 0
+  let actor2 = null
+  let actor3 = null
+  let actor4 = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -57,7 +62,7 @@ describe('BotContext', () => {
       attributedTo: formatter.format({ username: 'test1' }),
       to: 'https://www.w3.org/ns/activitystreams#Public'
     }))
-    const actor2 = await as2import({
+    actor2 = await as2import({
       id: 'https://social.example/user/test2',
       type: 'Person',
       preferredUsername: 'test2',
@@ -76,6 +81,28 @@ describe('BotContext', () => {
       to: 'https://www.w3.org/ns/activitystreams#Public'
     })
     const objectText = await as2write(object)
+    actor3 = await as2import({
+      id: 'https://social.example/user/test3',
+      type: 'Person',
+      preferredUsername: 'test2',
+      inbox: 'https://social.example/user/test3/inbox',
+      outbox: 'https://social.example/user/test3/outbox',
+      followers: 'https://social.example/user/test3/followers',
+      following: 'https://social.example/user/test3/following',
+      liked: 'https://social.example/user/test3/liked'
+    })
+    const actor3Text = await as2write(actor3)
+    actor4 = await as2import({
+      id: 'https://social.example/user/test4',
+      type: 'Person',
+      preferredUsername: 'test4',
+      inbox: 'https://social.example/user/test4/inbox',
+      outbox: 'https://social.example/user/test4/outbox',
+      followers: 'https://social.example/user/test4/followers',
+      following: 'https://social.example/user/test4/following',
+      liked: 'https://social.example/user/test4/liked'
+    })
+    const actor4Text = await as2write(actor4)
     nock('https://social.example')
       .get('/user/test2')
       .reply(200, actor2Text, { 'Content-Type': 'application/activity+json' })
@@ -88,6 +115,25 @@ describe('BotContext', () => {
       .get('/user/test2/object/1')
       .reply(200, objectText, { 'Content-Type': 'application/activity+json' })
       .persist()
+      .get('/user/test3')
+      .reply(200, actor3Text, { 'Content-Type': 'application/activity+json' })
+      .persist()
+      .post('/user/test3/inbox')
+      .reply((uri, requestBody) => {
+        postInbox3 += 1
+        return [202, 'accepted']
+      })
+      .persist()
+      .get('/user/test4')
+      .reply(200, actor4Text, { 'Content-Type': 'application/activity+json' })
+      .persist()
+      .post('/user/test4/inbox')
+      .reply((uri, requestBody) => {
+        postInbox4 += 1
+        return [202, 'accepted']
+      })
+      .persist()
+    await actorStorage.addToCollection('test1', 'following', actor4)
   })
   after(async () => {
     await connection.close()
@@ -103,6 +149,8 @@ describe('BotContext', () => {
   })
   beforeEach(async () => {
     postInbox2 = 0
+    postInbox3 = 0
+    postInbox4 = 0
   })
   it('can initialize', async () => {
     context = new BotContext(
@@ -176,5 +224,35 @@ describe('BotContext', () => {
     assert.strictEqual(inbox.totalItems, 3)
     const liked = await actorStorage.getCollection('test1', 'liked')
     assert.strictEqual(liked.totalItems, 0)
+  })
+  it('can follow an actor', async () => {
+    await context.followActor(actor3)
+    assert.strictEqual(postInbox3, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 4)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 4)
+    const pendingFollowing = await actorStorage.getCollection('test1', 'pendingFollowing')
+    assert.strictEqual(pendingFollowing.totalItems, 1)
+  })
+  it('can unfollow a pending actor', async () => {
+    await context.unfollowActor(actor3)
+    assert.strictEqual(postInbox3, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 5)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 5)
+    const pendingFollowing = await actorStorage.getCollection('test1', 'pendingFollowing')
+    assert.strictEqual(pendingFollowing.totalItems, 0)
+  })
+  it('can unfollow a followed actor', async () => {
+    await context.unfollowActor(actor4)
+    assert.strictEqual(postInbox4, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 6)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 6)
+    const pendingFollowing = await actorStorage.getCollection('test1', 'following')
+    assert.strictEqual(pendingFollowing.totalItems, 0)
   })
 })
