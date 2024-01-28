@@ -59,6 +59,7 @@ describe('BotContext', () => {
   let actor3 = null
   let actor5 = null
   let actor6 = null
+  let note = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -169,7 +170,7 @@ describe('BotContext', () => {
     assert.strictEqual(followers.totalItems, 1)
     const content = 'Hello World'
     const to = 'https://www.w3.org/ns/activitystreams#Public'
-    const note = await context.sendNote(content, { to })
+    note = await context.sendNote(content, { to })
     assert.ok(note)
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
@@ -301,5 +302,29 @@ describe('BotContext', () => {
     assert.strictEqual(following.totalItems, 0)
     const followers = await actorStorage.getCollection('test1', 'followers')
     assert.strictEqual(followers.totalItems, 1)
+  })
+  it('can update a note', async () => {
+    const content = 'Hello World 2'
+    await context.updateNote(note, content)
+    assert.strictEqual(postInbox.test2, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 11)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 11)
+    const copy = await context.getObject(note.id)
+    assert.strictEqual(copy.content.get(), content)
+  })
+  it('can delete a note', async () => {
+    await context.deleteNote(note)
+    assert.strictEqual(postInbox.test2, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 12)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 12)
+    const copy = await context.getObject(note.id)
+    assert.ok(copy)
+    assert.strictEqual(copy.type, 'https://www.w3.org/ns/activitystreams#Tombstone')
+    assert.ok(copy.deleted)
+    // FIXME: check for formerType when activitystrea.ms supports it
   })
 })
