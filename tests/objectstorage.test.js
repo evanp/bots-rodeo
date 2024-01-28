@@ -42,7 +42,7 @@ describe('ObjectStorage', async () => {
     await storage.create(doc)
   })
   it('can read a created object', async () => {
-    const read = await storage.read(doc.id)
+    await storage.read(doc.id)
   })
   it('can update a created object', async () => {
     const doc2 = await as2import({
@@ -59,7 +59,7 @@ describe('ObjectStorage', async () => {
   it('can delete a created object', async () => {
     await storage.delete(doc)
     try {
-      const read = await storage.read(doc.id)
+      await storage.read(doc.id)
       assert.fail('should not be able to read deleted object')
     } catch (err) {
       assert.ok(err instanceof NoSuchObjectError)
