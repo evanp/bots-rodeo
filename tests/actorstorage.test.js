@@ -113,4 +113,14 @@ describe('ActorStorage', () => {
     assert.strictEqual(page.items.length, 20)
     assert.strictEqual(page.next.id, 'https://botsrodeo.example/user/test4/liked/page/2')
   })
+  it('can iterate over a collection', async () => {
+    const seen = new Set()
+    for await (const item of storage.items('test4', 'liked')) {
+      assert.ok(!(item.id in seen))
+      console.log(item.id)
+      seen.add(item.id)
+      console.log(seen.size)
+    }
+    assert.strictEqual(seen.size, 100)
+  })
 })
