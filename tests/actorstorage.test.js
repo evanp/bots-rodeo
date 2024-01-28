@@ -153,4 +153,74 @@ describe('ActorStorage', () => {
     const collection3 = await storage.getCollection('test5', 'liked')
     assert.strictEqual(collection3.totalItems, 1)
   })
+  it('can check if something is in the collection', async () => {
+    const other = await as2import({
+      id: 'https://social.example/user/foo/note/300',
+      type: 'Note',
+      content: 'Hello World 300'
+    })
+    const other2 = await as2import({
+      id: 'https://social.example/user/foo/note/301',
+      type: 'Note',
+      content: 'Hello World 301'
+    })
+    let collection = await storage.getCollection('test6', 'liked')
+    assert.strictEqual(collection.totalItems, 0)
+    await storage.addToCollection(
+      'test6',
+      'liked',
+      other
+    )
+    collection = await storage.getCollection('test6', 'liked')
+    assert.strictEqual(collection.totalItems, 1)
+    assert.ok(await storage.isInCollection(
+      'test6',
+      'liked',
+      other
+    ))
+    assert.ok(!await storage.isInCollection(
+      'test6',
+      'liked',
+      other2
+    ))
+  })
+
+  it('retains totalItems when we remove an absent object', async () => {
+    const other = await as2import({
+      id: 'https://social.example/user/foo/note/400',
+      type: 'Note',
+      content: 'Hello World 400'
+    })
+    const other2 = await as2import({
+      id: 'https://social.example/user/foo/note/401',
+      type: 'Note',
+      content: 'Hello World 401'
+    })
+    const other3 = await as2import({
+      id: 'https://social.example/user/foo/note/402',
+      type: 'Note',
+      content: 'Hello World 402'
+    })
+    let collection = await storage.getCollection('test7', 'liked')
+    assert.strictEqual(collection.totalItems, 0)
+    await storage.addToCollection(
+      'test7',
+      'liked',
+      other
+    )
+    await storage.addToCollection(
+      'test7',
+      'liked',
+      other2
+    )
+    collection = await storage.getCollection('test7', 'liked')
+    assert.strictEqual(collection.totalItems, 2)
+    await storage.removeFromCollection(
+      'test7',
+      'liked',
+      other3
+    )
+    collection = await storage.getCollection('test7', 'liked')
+    assert.strictEqual(collection.totalItems, 2)
+  })
 })
