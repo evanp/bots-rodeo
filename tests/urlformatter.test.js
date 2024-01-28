@@ -76,4 +76,8 @@ describe('UrlFormatter', () => {
     })
     assert.equal(url, 'https://botsrodeo.example/publickey')
   })
+  it('can tell if an URL is local', () => {
+    assert.ok(formatter.isLocal('https://botsrodeo.example/user/megabot'))
+    assert.ok(!formatter.isLocal('https://social.example/user/megabot'))
+  })
 })
