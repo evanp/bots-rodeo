@@ -93,7 +93,6 @@ describe('ActorStorage', () => {
     const page = await storage.getCollectionPage('test3', 'followers', 1)
     assert.ok(!page.items)
   })
-
   it('can add a lot of items a collection', async () => {
     for (let i = 0; i < 100; i++) {
       const other = await as2import({
@@ -117,10 +116,41 @@ describe('ActorStorage', () => {
     const seen = new Set()
     for await (const item of storage.items('test4', 'liked')) {
       assert.ok(!(item.id in seen))
-      console.log(item.id)
       seen.add(item.id)
-      console.log(seen.size)
     }
     assert.strictEqual(seen.size, 100)
+  })
+  it('can add twice and remove once from a collection', async () => {
+    const other = await as2import({
+      id: 'https://social.example/user/foo/note/200',
+      type: 'Note',
+      content: 'Hello World 200'
+    })
+    const other2 = await as2import({
+      id: 'https://social.example/user/foo/note/201',
+      type: 'Note',
+      content: 'Hello World 201'
+    })
+    const collection = await storage.getCollection('test5', 'liked')
+    assert.strictEqual(collection.totalItems, 0)
+    await storage.addToCollection(
+      'test5',
+      'liked',
+      other
+    )
+    await storage.addToCollection(
+      'test5',
+      'liked',
+      other2
+    )
+    const collection2 = await storage.getCollection('test5', 'liked')
+    assert.strictEqual(collection2.totalItems, 2)
+    await storage.removeFromCollection(
+      'test5',
+      'liked',
+      other
+    )
+    const collection3 = await storage.getCollection('test5', 'liked')
+    assert.strictEqual(collection3.totalItems, 1)
   })
 })
