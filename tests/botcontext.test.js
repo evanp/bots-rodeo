@@ -153,4 +153,28 @@ describe('BotContext', () => {
     const inbox = await actorStorage.getCollection('test1', 'inbox')
     assert.strictEqual(inbox.totalItems, 1)
   })
+  it('can like an object', async () => {
+    const id = 'https://social.example/user/test2/object/1'
+    const obj = await context.getObject(id)
+    await context.likeObject(obj)
+    assert.strictEqual(postInbox2, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 2)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 2)
+    const liked = await actorStorage.getCollection('test1', 'liked')
+    assert.strictEqual(liked.totalItems, 1)
+  })
+  it('can unlike an object', async () => {
+    const id = 'https://social.example/user/test2/object/1'
+    const obj = await context.getObject(id)
+    await context.unlikeObject(obj)
+    assert.strictEqual(postInbox2, 1)
+    const outbox = await actorStorage.getCollection('test1', 'outbox')
+    assert.strictEqual(outbox.totalItems, 3)
+    const inbox = await actorStorage.getCollection('test1', 'inbox')
+    assert.strictEqual(inbox.totalItems, 3)
+    const liked = await actorStorage.getCollection('test1', 'liked')
+    assert.strictEqual(liked.totalItems, 0)
+  })
 })
