@@ -3,25 +3,11 @@ import { ActorStorage } from '../lib/actorstorage.js'
 import { Sequelize } from 'sequelize'
 import { UrlFormatter } from '../lib/urlformatter.js'
 import as2 from 'activitystrea.ms'
-import { promisify } from 'node:util'
 import nock from 'nock'
 import { KeyStorage } from '../lib/keystorage.js'
 import { ActivityPubClient } from '../lib/activitypubclient.js'
 import assert from 'node:assert'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
-
-const as2import = promisify(as2.import)
-const as2export = function (obj) {
-  return new Promise((resolve, reject) => {
-    obj.export((err, doc) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve(doc)
-      }
-    })
-  })
-}
 
 describe('ActivityDistributor', () => {
   let connection = null
@@ -48,7 +34,7 @@ describe('ActivityDistributor', () => {
     keyStorage = new KeyStorage(connection)
     await keyStorage.initialize()
     client = new ActivityPubClient(keyStorage, formatter)
-    actor1 = await as2import({
+    actor1 = await as2.import({
       id: 'https://social.example/user/test1',
       type: 'Person',
       preferredUsername: 'test1',
@@ -58,8 +44,8 @@ describe('ActivityDistributor', () => {
       following: 'https://social.example/user/test1/following',
       liked: 'https://social.example/user/test1/liked'
     })
-    const actor1Text = await as2export(actor1)
-    actor2 = await as2import({
+    const actor1Text = await actor1.export()
+    actor2 = await as2.import({
       id: 'https://other.example/user/test2',
       type: 'Person',
       preferredUsername: 'test2',
@@ -69,8 +55,8 @@ describe('ActivityDistributor', () => {
       following: 'https://other.example/user/test2/following',
       liked: 'https://other.example/user/test2/liked'
     })
-    const actor2Text = await as2export(actor2)
-    actor3 = await as2import({
+    const actor2Text = await actor2.export()
+    actor3 = await as2.import({
       id: 'https://third.example/user/test3',
       type: 'Person',
       preferredUsername: 'test3',
@@ -80,7 +66,7 @@ describe('ActivityDistributor', () => {
       following: 'https://third.example/user/test3/following',
       liked: 'https://third.example/user/test3/liked'
     })
-    const actor3Text = await as2export(actor3)
+    const actor3Text = await actor3.export()
     await actorStorage.addToCollection('test0', 'followers', actor2)
     await actorStorage.addToCollection('test0', 'followers', actor3)
     nock('https://social.example')
@@ -152,7 +138,7 @@ describe('ActivityDistributor', () => {
     assert.ok(distributor instanceof ActivityDistributor)
   })
   it('can distribute an activity to a single recipient', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/1',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -168,7 +154,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can distribute an activity to all followers', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/2',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -184,7 +170,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can distribute an activity to the public', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -200,7 +186,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can distribute an activity to an addressed actor and followers', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/4',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -217,7 +203,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can distribute an activity to an addressed actor and the public', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -234,7 +220,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('only sends once to an addressed follower', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
@@ -251,7 +237,7 @@ describe('ActivityDistributor', () => {
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('only sends once to an addressed follower for the public', async () => {
-    const activity = await as2import({
+    const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',

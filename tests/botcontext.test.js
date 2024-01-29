@@ -10,24 +10,10 @@ import { ActivityPubClient } from '../lib/activitypubclient.js'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 import { ActorStorage } from '../lib/actorstorage.js'
 import as2 from 'activitystrea.ms'
-import { promisify } from 'node:util'
 import nock from 'nock'
 
-const as2import = promisify(as2.import)
-const as2write = (obj) => {
-  return new Promise((resolve, reject) => {
-    obj.write((err, doc) => {
-      if (err) {
-        reject(err)
-      } else {
-        resolve(doc)
-      }
-    })
-  })
-}
-
 const makeActor = (username) =>
-  as2import({
+  as2.import({
     id: `https://social.example/user/${username}`,
     type: 'Person',
     preferredUsername: username,
@@ -38,7 +24,7 @@ const makeActor = (username) =>
     liked: `https://social.example/user/${username}/liked`
   })
 const makeObject = (username, num) =>
-  as2import({
+  as2.import({
     id: `https://social.example/user/${username}/object/${num}`,
     type: 'Object',
     attributedTo: `https://social.example/user/${username}`,
@@ -74,7 +60,7 @@ describe('BotContext', () => {
     await actorStorage.initialize()
     client = new ActivityPubClient(keyStorage, formatter)
     distributor = new ActivityDistributor(client, formatter, actorStorage)
-    await objectStorage.create(await as2import({
+    await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
       attributedTo: formatter.format({ username: 'test1' }),
@@ -85,7 +71,7 @@ describe('BotContext', () => {
       .reply(async (uri, requestBody) => {
         const username = uri.match(/\/user\/(\w+)$/)[1]
         const actor = await makeActor(username)
-        const actorText = await as2write(actor)
+        const actorText = await actor.write()
         return [200, actorText, { 'Content-Type': 'application/activity+json' }]
       })
       .persist()
@@ -106,7 +92,7 @@ describe('BotContext', () => {
         const username = match[1]
         const num = match[2]
         const obj = await makeObject(username, num)
-        const objText = await as2write(obj)
+        const objText = await obj.write()
         return [200, objText, { 'Content-Type': 'application/activity+json' }]
       })
   })

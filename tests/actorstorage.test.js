@@ -4,9 +4,6 @@ import { ActorStorage } from '../lib/actorstorage.js'
 import { Sequelize } from 'sequelize'
 import { UrlFormatter } from '../lib/urlformatter.js'
 import as2 from 'activitystrea.ms'
-import { promisify } from 'node:util'
-
-const as2import = promisify(as2.import)
 
 describe('ActorStorage', () => {
   let connection = null
@@ -17,7 +14,7 @@ describe('ActorStorage', () => {
     connection = new Sequelize('sqlite::memory:', { logging: false })
     await connection.authenticate()
     formatter = new UrlFormatter('https://botsrodeo.example')
-    other = await as2import({
+    other = await as2.import({
       id: 'https://social.example/user/test2',
       type: 'Person'
     })
@@ -95,7 +92,7 @@ describe('ActorStorage', () => {
   })
   it('can add a lot of items a collection', async () => {
     for (let i = 0; i < 100; i++) {
-      const other = await as2import({
+      const other = await as2.import({
         id: `https://social.example/user/foo/note/${i}`,
         type: 'Note',
         content: `Hello World ${i}`
@@ -121,12 +118,12 @@ describe('ActorStorage', () => {
     assert.strictEqual(seen.size, 100)
   })
   it('can add twice and remove once from a collection', async () => {
-    const other = await as2import({
+    const other = await as2.import({
       id: 'https://social.example/user/foo/note/200',
       type: 'Note',
       content: 'Hello World 200'
     })
-    const other2 = await as2import({
+    const other2 = await as2.import({
       id: 'https://social.example/user/foo/note/201',
       type: 'Note',
       content: 'Hello World 201'
@@ -154,12 +151,12 @@ describe('ActorStorage', () => {
     assert.strictEqual(collection3.totalItems, 1)
   })
   it('can check if something is in the collection', async () => {
-    const other = await as2import({
+    const other = await as2.import({
       id: 'https://social.example/user/foo/note/300',
       type: 'Note',
       content: 'Hello World 300'
     })
-    const other2 = await as2import({
+    const other2 = await as2.import({
       id: 'https://social.example/user/foo/note/301',
       type: 'Note',
       content: 'Hello World 301'
@@ -186,17 +183,17 @@ describe('ActorStorage', () => {
   })
 
   it('retains totalItems when we remove an absent object', async () => {
-    const other = await as2import({
+    const other = await as2.import({
       id: 'https://social.example/user/foo/note/400',
       type: 'Note',
       content: 'Hello World 400'
     })
-    const other2 = await as2import({
+    const other2 = await as2.import({
       id: 'https://social.example/user/foo/note/401',
       type: 'Note',
       content: 'Hello World 401'
     })
-    const other3 = await as2import({
+    const other3 = await as2.import({
       id: 'https://social.example/user/foo/note/402',
       type: 'Note',
       content: 'Hello World 402'

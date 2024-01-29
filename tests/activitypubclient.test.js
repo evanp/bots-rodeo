@@ -36,15 +36,7 @@ describe('ActivityPubClient', async () => {
       .content('Hello World')
       .publishedNow()
       .get()
-    const noteText = await new Promise((resolve, reject) => {
-      note.prettyWrite((err, doc) => {
-        if (err) {
-          reject(err)
-        } else {
-          resolve(doc)
-        }
-      })
-    })
+    const noteText = await note.prettyWrite()
     nock('https://social.example')
       .get('/users/evan/note/1')
       .reply(function (uri, requestBody) {

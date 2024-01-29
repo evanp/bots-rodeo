@@ -2,10 +2,7 @@ import { describe, it, before, after } from 'node:test'
 import as2 from 'activitystrea.ms'
 import assert from 'node:assert'
 import { ObjectStorage, NoSuchObjectError } from '../lib/objectstorage.js'
-import { promisify } from 'node:util'
 import { Sequelize } from 'sequelize'
-
-const as2import = promisify(as2.import)
 
 describe('ObjectStorage', async () => {
   let doc = null
@@ -13,14 +10,14 @@ describe('ObjectStorage', async () => {
   let connection = null
   let storage = null
   before(async () => {
-    doc = await as2import({
+    doc = await as2.import({
       '@context': 'https://www.w3.org/ns/activitystreams',
       id: 'https://social.example/users/test/note/1',
       type: 'Note',
       name: 'test',
       content: 'test'
     })
-    doc2 = await as2import({
+    doc2 = await as2.import({
       '@context': 'https://www.w3.org/ns/activitystreams',
       id: 'https://social.example/users/test/note/2',
       type: 'Note',
@@ -45,7 +42,7 @@ describe('ObjectStorage', async () => {
     await storage.read(doc.id)
   })
   it('can update a created object', async () => {
-    const doc2 = await as2import({
+    const doc2 = await as2.import({
       '@context': 'https://www.w3.org/ns/activitystreams',
       id: 'https://social.example/users/test/note/1',
       type: 'Note',
@@ -97,7 +94,7 @@ describe('ObjectStorage', async () => {
   })
   it('can add many items to a collection', async () => {
     for (let i = 3; i < 103; i++) {
-      const reply = await as2import({
+      const reply = await as2.import({
         '@context': 'https://www.w3.org/ns/activitystreams',
         id: `https://social.example/users/test/note/${i}`,
         type: 'Note',
