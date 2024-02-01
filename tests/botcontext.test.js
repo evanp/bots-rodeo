@@ -321,7 +321,7 @@ describe('BotContext', () => {
       await context.likeObject(obj)
       assert.fail('Expected an error')
     } catch (error) {
-      assert.ok
+      assert.ok(true)
     }
   })
   it('fails when unliking an object never seen before', async () => {
