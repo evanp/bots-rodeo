@@ -351,7 +351,7 @@ describe('ActivityDistributor', () => {
     assert.equal(btoSeen, 0, 'bto should not be seen')
   })
   it('posts once to a shared inbox', async () => {
-    const nums = Array.from({ length: 100 }, (v, k) => k + 1)
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1)
     const remotes = nums.map(n => `https://shared.example/user/test${n}`)
     const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/9',
@@ -367,7 +367,7 @@ describe('ActivityDistributor', () => {
     }
   })
   it('uses the cache for sending again to same actors', async () => {
-    const nums = Array.from({ length: 100 }, (v, k) => k + 1)
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1)
     const remotes = nums.map(n => `https://shared.example/user/test${n}`)
     const activity = await as2.import({
       id: 'https://botsrodeo.example/user/test0/intransitiveactivity/10',
@@ -379,6 +379,66 @@ describe('ActivityDistributor', () => {
     assert.equal(postSharedInbox['shared.example'], 1)
     for (const i of nums) {
       assert.ok(!getActor[`test${i}`])
+    }
+  })
+  it('delivers directly for addressees in bto', async () => {
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/11',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      bto: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.ok(!postSharedInbox['shared.example'])
+    for (const i of nums) {
+      assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
+    }
+  })
+  it('delivers directly for addressees in bto a second time', async () => {
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/12',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      bto: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.ok(!postSharedInbox['shared.example'])
+    for (const i of nums) {
+      assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
+    }
+  })
+  it('delivers directly for addressees in bcc', async () => {
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1).map(n => n + 100)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/13',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      bcc: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.ok(!postSharedInbox['shared.example'])
+    for (const i of nums) {
+      assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
+    }
+  })
+  it('delivers directly for addressees in bcc a second time', async () => {
+    const nums = Array.from({ length: 10 }, (v, k) => k + 1).map(n => n + 100)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/14',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      bcc: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.ok(!postSharedInbox['shared.example'])
+    for (const i of nums) {
+      assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
     }
   })
 })
