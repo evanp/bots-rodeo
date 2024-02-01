@@ -313,4 +313,25 @@ describe('BotContext', () => {
     assert.ok(copy.deleted)
     // FIXME: check for formerType when activitystrea.ms supports it
   })
+  it('fails when liking an object twice', async () => {
+    const id = 'https://social.example/user/test2/object/2'
+    const obj = await context.getObject(id)
+    await context.likeObject(obj)
+    try {
+      await context.likeObject(obj)
+      assert.fail('Expected an error')
+    } catch (error) {
+      assert.ok
+    }
+  })
+  it('fails when unliking an object never seen before', async () => {
+    const id = 'https://social.example/user/test2/object/3'
+    const obj = await context.getObject(id)
+    try {
+      await context.unlikeObject(obj)
+      assert.fail('Expected an error')
+    } catch (error) {
+      assert.ok(true)
+    }
+  })
 })
