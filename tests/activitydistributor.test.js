@@ -9,6 +9,29 @@ import { ActivityPubClient } from '../lib/activitypubclient.js'
 import assert from 'node:assert'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 
+const makeActor = (domain, username) =>
+  as2.import({
+    id: `https://${domain}/user/${username}`,
+    type: 'Person',
+    preferredUsername: username,
+    inbox: `https://${domain}/user/${username}/inbox`,
+    outbox: `https://${domain}/user/${username}/outbox`,
+    followers: `https://${domain}/user/${username}/followers`,
+    following: `https://${domain}/user/${username}/following`,
+    liked: `https://${domain}/user/${username}/liked`,
+    endpoints: {
+      sharedInbox: `https://${domain}/sharedInbox`
+    }
+  })
+
+const makeObject = (domain, username, num) =>
+  as2.import({
+    id: `https://${domain}/user/${username}/object/${num}`,
+    type: 'Object',
+    attributedTo: `https://${domain}/user/${username}`,
+    to: 'https://www.w3.org/ns/activitystreams#Public'
+  })
+
 describe('ActivityDistributor', () => {
   let connection = null
   let actorStorage = null
@@ -28,6 +51,8 @@ describe('ActivityDistributor', () => {
   let postedTest3Inbox = 0
   let btoSeen = 0
   let bccSeen = 0
+  let postInbox = {}
+  let postSharedInbox = {}
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -133,6 +158,46 @@ describe('ActivityDistributor', () => {
         return [202, 'accepted']
       })
       .persist()
+    nock('https://shared.example')
+      .get(/\/user\/(\w+)$/)
+      .reply(async (uri, requestBody) => {
+        const username = uri.match(/\/user\/(\w+)$/)[1]
+        const actor = await makeActor('shared.example', username)
+        const actorText = await actor.write()
+        return [200, actorText, { 'Content-Type': 'application/activity+json' }]
+      })
+      .persist()
+      .post(/\/user\/(\w+)\/inbox$/)
+      .reply(async (uri, requestBody) => {
+        const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
+        if (username in postInbox) {
+          postInbox[username] += 1
+        } else {
+          postInbox[username] = 1
+        }
+        return [202, 'accepted']
+      })
+      .persist()
+      .post(/\/sharedInbox$/)
+      .reply(async (uri, requestBody) => {
+        const domain = 'shared.example'
+        if (domain in postSharedInbox) {
+          postSharedInbox[domain] += 1
+        } else {
+          postSharedInbox[domain] = 1
+        }
+        return [202, 'accepted']
+      })
+      .persist()
+      .get(/\/user\/(\w+)\/object\/(\d+)$/)
+      .reply(async (uri, requestBody) => {
+        const match = uri.match(/\/user\/(\w+)\/object\/(\d+)$/)
+        const username = match[1]
+        const num = match[2]
+        const obj = await makeObject('shared.example', username, num)
+        const objText = await obj.write()
+        return [200, objText, { 'Content-Type': 'application/activity+json' }]
+      })
   })
   after(async () => {
     await connection.close()
@@ -153,6 +218,8 @@ describe('ActivityDistributor', () => {
     postedTest3Inbox = 0
     btoSeen = 0
     bccSeen = 0
+    postInbox = {}
+    postSharedInbox = {}
   })
   it('can create an instance', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
@@ -225,7 +292,7 @@ describe('ActivityDistributor', () => {
   })
   it('can distribute an activity to an addressed actor and the public', async () => {
     const activity = await as2.import({
-      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/5',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
       to: ['https://social.example/user/test1'],
@@ -242,7 +309,7 @@ describe('ActivityDistributor', () => {
   })
   it('only sends once to an addressed follower', async () => {
     const activity = await as2.import({
-      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/6',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
       to: ['https://other.example/user/test2'],
@@ -259,7 +326,7 @@ describe('ActivityDistributor', () => {
   })
   it('only sends once to an addressed follower for the public', async () => {
     const activity = await as2.import({
-      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/7',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
       to: ['https://other.example/user/test2'],
@@ -276,7 +343,7 @@ describe('ActivityDistributor', () => {
   })
   it('does not send bcc or bto over the wire', async () => {
     const activity = await as2.import({
-      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/8',
       type: 'IntransitiveActivity',
       actor: 'https://botsrodeo.example/user/test0',
       bto: ['https://other.example/user/test2'],
@@ -287,5 +354,20 @@ describe('ActivityDistributor', () => {
     assert.equal(postedTest3Inbox, 1)
     assert.equal(bccSeen, 0, 'bcc should not be seen')
     assert.equal(btoSeen, 0, 'bto should not be seen')
+  })
+  it('posts once to a shared inbox', async () => {
+    const nums = Array.from({ length: 100 }, (v, k) => k + 1)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/9',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      to: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.equal(postSharedInbox['shared.example'], 1)
+    for (const i of nums) {
+      assert.ok(!postInbox[`test${i}`])
+    }
   })
 })
