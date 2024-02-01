@@ -25,6 +25,9 @@ describe('ActivityDistributor', () => {
   let gotTest2 = 0
   let postedTest1Inbox = 0
   let postedTest2Inbox = 0
+  let postedTest3Inbox = 0
+  let btoSeen = 0
+  let bccSeen = 0
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -98,6 +101,13 @@ describe('ActivityDistributor', () => {
       .post('/user/test2/inbox')
       .reply(function (uri, requestBody) {
         postedTest2Inbox += 1
+        const obj = JSON.parse(requestBody)
+        if (obj.bcc) {
+          bccSeen += 1
+        }
+        if (obj.bto) {
+          btoSeen += 1
+        }
         signature = this.req.headers.signature
         digest = this.req.headers.digest
         return [202, 'accepted']
@@ -112,6 +122,14 @@ describe('ActivityDistributor', () => {
       .persist()
       .post('/user/test3/inbox')
       .reply(function (uri, requestBody) {
+        postedTest3Inbox += 1
+        const obj = JSON.parse(requestBody)
+        if (obj.bcc) {
+          bccSeen += 1
+        }
+        if (obj.bto) {
+          btoSeen += 1
+        }
         return [202, 'accepted']
       })
       .persist()
@@ -132,6 +150,9 @@ describe('ActivityDistributor', () => {
     gotTest2 = 0
     postedTest1Inbox = 0
     postedTest2Inbox = 0
+    postedTest3Inbox = 0
+    btoSeen = 0
+    bccSeen = 0
   })
   it('can create an instance', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
@@ -252,5 +273,19 @@ describe('ActivityDistributor', () => {
     assert.ok(signature)
     assert.ok(digest)
     assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+  })
+  it('does not send bcc or bto over the wire', async () => {
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/3',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      bto: ['https://other.example/user/test2'],
+      bcc: ['https://third.example/user/test3']
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.equal(postedTest2Inbox, 1)
+    assert.equal(postedTest3Inbox, 1)
+    assert.equal(bccSeen, 0, 'bcc should not be seen')
+    assert.equal(btoSeen, 0, 'bto should not be seen')
   })
 })
