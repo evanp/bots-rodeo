@@ -53,6 +53,7 @@ describe('ActivityDistributor', () => {
   let bccSeen = 0
   let postInbox = {}
   let postSharedInbox = {}
+  let getActor = {}
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -162,6 +163,11 @@ describe('ActivityDistributor', () => {
       .get(/\/user\/(\w+)$/)
       .reply(async (uri, requestBody) => {
         const username = uri.match(/\/user\/(\w+)$/)[1]
+        if (username in postInbox) {
+          getActor[username] += 1
+        } else {
+          getActor[username] = 1
+        }
         const actor = await makeActor('shared.example', username)
         const actorText = await actor.write()
         return [200, actorText, { 'Content-Type': 'application/activity+json' }]
@@ -220,6 +226,7 @@ describe('ActivityDistributor', () => {
     bccSeen = 0
     postInbox = {}
     postSharedInbox = {}
+    getActor = {}
   })
   it('can create an instance', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
@@ -235,7 +242,6 @@ describe('ActivityDistributor', () => {
     await distributor.distribute(activity, 'test0')
     assert.equal(gotTest1, 1)
     assert.equal(postedTest1Inbox, 1)
-    assert.equal(gotTest2, 0)
     assert.equal(postedTest2Inbox, 0)
     assert.ok(signature)
     assert.ok(digest)
@@ -249,7 +255,6 @@ describe('ActivityDistributor', () => {
       to: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 0)
     assert.equal(postedTest1Inbox, 0)
     assert.equal(gotTest2, 1)
     assert.equal(postedTest2Inbox, 1)
@@ -265,9 +270,7 @@ describe('ActivityDistributor', () => {
       to: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 0)
     assert.equal(postedTest1Inbox, 0)
-    assert.equal(gotTest2, 1)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
     assert.ok(digest)
@@ -282,9 +285,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 1)
     assert.equal(postedTest1Inbox, 1)
-    assert.equal(gotTest2, 1)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
     assert.ok(digest)
@@ -299,9 +300,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 1)
     assert.equal(postedTest1Inbox, 1)
-    assert.equal(gotTest2, 1)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
     assert.ok(digest)
@@ -316,9 +315,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 0)
     assert.equal(postedTest1Inbox, 0)
-    assert.ok(gotTest2 > 0)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
     assert.ok(digest)
@@ -333,9 +330,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
-    assert.equal(gotTest1, 0)
     assert.equal(postedTest1Inbox, 0)
-    assert.ok(gotTest2 > 0)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
     assert.ok(digest)
@@ -368,6 +363,22 @@ describe('ActivityDistributor', () => {
     assert.equal(postSharedInbox['shared.example'], 1)
     for (const i of nums) {
       assert.ok(!postInbox[`test${i}`])
+      assert.equal(getActor[`test${i}`], 1)
+    }
+  })
+  it('uses the cache for sending again to same actors', async () => {
+    const nums = Array.from({ length: 100 }, (v, k) => k + 1)
+    const remotes = nums.map(n => `https://shared.example/user/test${n}`)
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/10',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      to: remotes
+    })
+    await distributor.distribute(activity, 'test0')
+    assert.equal(postSharedInbox['shared.example'], 1)
+    for (const i of nums) {
+      assert.ok(!getActor[`test${i}`])
     }
   })
 })
