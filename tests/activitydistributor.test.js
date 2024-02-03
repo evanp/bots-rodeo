@@ -240,6 +240,7 @@ describe('ActivityDistributor', () => {
       to: ['https://social.example/user/test1']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(gotTest1, 1)
     assert.equal(postedTest1Inbox, 1)
     assert.equal(postedTest2Inbox, 0)
@@ -255,6 +256,7 @@ describe('ActivityDistributor', () => {
       to: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(gotTest2, 1)
     assert.equal(postedTest2Inbox, 1)
@@ -270,6 +272,7 @@ describe('ActivityDistributor', () => {
       to: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
@@ -285,6 +288,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 1)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
@@ -300,6 +304,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 1)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
@@ -315,6 +320,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://botsrodeo.example/user/test0/followers']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
@@ -330,6 +336,7 @@ describe('ActivityDistributor', () => {
       cc: ['https://www.w3.org/ns/activitystreams#Public']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(postedTest2Inbox, 1)
     assert.ok(signature)
@@ -345,6 +352,7 @@ describe('ActivityDistributor', () => {
       bcc: ['https://third.example/user/test3']
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postedTest2Inbox, 1)
     assert.equal(postedTest3Inbox, 1)
     assert.equal(bccSeen, 0, 'bcc should not be seen')
@@ -360,6 +368,7 @@ describe('ActivityDistributor', () => {
       to: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postSharedInbox['shared.example'], 1)
     for (const i of nums) {
       assert.ok(!postInbox[`test${i}`])
@@ -376,6 +385,7 @@ describe('ActivityDistributor', () => {
       to: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.equal(postSharedInbox['shared.example'], 1)
     for (const i of nums) {
       assert.ok(!getActor[`test${i}`])
@@ -391,6 +401,7 @@ describe('ActivityDistributor', () => {
       bto: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.ok(!postSharedInbox['shared.example'])
     for (const i of nums) {
       assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
@@ -406,6 +417,7 @@ describe('ActivityDistributor', () => {
       bto: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.ok(!postSharedInbox['shared.example'])
     for (const i of nums) {
       assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
@@ -421,6 +433,7 @@ describe('ActivityDistributor', () => {
       bcc: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.ok(!postSharedInbox['shared.example'])
     for (const i of nums) {
       assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
@@ -436,6 +449,7 @@ describe('ActivityDistributor', () => {
       bcc: remotes
     })
     await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
     assert.ok(!postSharedInbox['shared.example'])
     for (const i of nums) {
       assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
