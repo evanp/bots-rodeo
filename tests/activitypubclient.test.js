@@ -7,12 +7,32 @@ import { Sequelize } from 'sequelize'
 import nock from 'nock'
 import as2 from 'activitystrea.ms'
 
+const makeActor = (username) =>
+  as2.import({
+    id: `https://social.example/user/${username}`,
+    type: 'Person',
+    preferredUsername: username,
+    inbox: `https://social.example/user/${username}/inbox`,
+    outbox: `https://social.example/user/${username}/outbox`,
+    followers: `https://social.example/user/${username}/followers`,
+    following: `https://social.example/user/${username}/following`,
+    liked: `https://social.example/user/${username}/liked`
+  })
+const makeNote = (username, num) =>
+  as2.import({
+    id: `https://social.example/user/${username}/note/${num}`,
+    type: 'Object',
+    attributedTo: `https://social.example/user/${username}`,
+    to: 'https://www.w3.org/ns/activitystreams#Public',
+    content: `This is note ${num} by ${username}.`
+  })
+
 describe('ActivityPubClient', async () => {
   let connection = null
   let keyStorage = null
   let formatter = null
   let client = null
-  let note = null
+  let postInbox = null
   let signature = null
   let digest = null
   before(async () => {
@@ -21,36 +41,45 @@ describe('ActivityPubClient', async () => {
     keyStorage = new KeyStorage(connection)
     await keyStorage.initialize()
     formatter = new UrlFormatter('https://botsrodeo.example')
-    note = await as2.note()
-      .id('https://social.example/users/evan/note/1')
-      .attributedTo(
-        await as2.person()
-          .id('https://social.example/users/evan')
-          .name('Evan Prodromou')
-          .get())
-      .to(
-        await as2.collection()
-          .id('https://www.w3.org/ns/activitystreams#Public')
-          .get())
-      .summary('A note by Evan Prodromou')
-      .content('Hello World')
-      .publishedNow()
-      .get()
-    const noteText = await note.prettyWrite()
-    nock('https://social.example')
-      .get('/users/evan/note/1')
-      .reply(function (uri, requestBody) {
-        signature = this.req.headers.signature
-        return [200, noteText, { 'Content-Type': 'application/activity+json' }]
+    const remote = 'https://social.example'
+    nock(remote)
+      .get(/\/user\/(\w+)$/)
+      .reply(async function (uri, requestBody) {
+        const headers = this.req.headers
+        signature[remote + uri] = headers.signature
+        digest[remote + uri] = headers.digest
+        const username = uri.match(/\/user\/(\w+)$/)[1]
+        const actor = await makeActor(username)
+        const actorText = await actor.write()
+        return [200, actorText, { 'Content-Type': 'application/activity+json' }]
       })
       .persist()
-      .post('/users/evan/inbox')
-      .reply(function (uri, requestBody) {
-        signature = this.req.headers.signature
-        digest = this.req.headers.digest
+      .post(/\/user\/(\w+)\/inbox$/)
+      .reply(async function (uri, requestBody) {
+        const headers = this.req.headers
+        signature[remote + uri] = headers.signature
+        digest[remote + uri] = headers.digest
+        const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
+        if (username in postInbox) {
+          postInbox[username] += 1
+        } else {
+          postInbox[username] = 1
+        }
         return [202, 'accepted']
       })
       .persist()
+      .get(/\/user\/(\w+)\/note\/(\d+)$/)
+      .reply(async function (uri, requestBody) {
+        const headers = this.req.headers
+        signature[remote + uri] = headers.signature
+        digest[remote + uri] = headers.digest
+        const match = uri.match(/\/user\/(\w+)\/note\/(\d+)$/)
+        const username = match[1]
+        const num = match[2]
+        const obj = await makeNote(username, num)
+        const objText = await obj.write()
+        return [200, objText, { 'Content-Type': 'application/activity+json' }]
+      })
   })
   after(async () => {
     await connection.close()
@@ -58,38 +87,55 @@ describe('ActivityPubClient', async () => {
     connection = null
   })
   beforeEach(async () => {
-    signature = null
-    digest = null
+    signature = {}
+    digest = {}
+    postInbox = {}
   })
   it('can initialize', () => {
     client = new ActivityPubClient(keyStorage, formatter)
   })
   it('can get a remote object with a username', async () => {
-    const obj = await client.get('https://social.example/users/evan/note/1', 'foobot')
+    const id = 'https://social.example/user/evan/note/1'
+    const obj = await client.get(id, 'foobot')
     assert.ok(obj)
     assert.equal(typeof obj, 'object')
-    assert.equal(obj.id, note.id)
-    assert.ok(signature)
-    assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date",signature=".*",algorithm="rsa-sha256"$/)
+    assert.equal(obj.id, id)
+    assert.ok(signature[id])
+    assert.match(signature[id], /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can get a remote object without a username', async () => {
-    const obj = await client.get('https://social.example/users/evan/note/1')
+    const id = 'https://social.example/user/evan/note/1'
+    const obj = await client.get(id)
     assert.ok(obj)
     assert.equal(typeof obj, 'object')
-    assert.equal(obj.id, note.id)
-    assert.ok(signature)
-    assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/publickey",headers="\(request-target\) host date",signature=".*",algorithm="rsa-sha256"$/)
+    assert.equal(obj.id, id)
+    assert.ok(signature[id])
+    assert.match(signature[id], /^keyId="https:\/\/botsrodeo\.example\/publickey",headers="\(request-target\) host date",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('can deliver an activity', async () => {
     const obj = as2.follow()
       .actor('https://botsrodeo.example/user/foobot')
-      .object('https://social.example/users/evan')
-      .to('https://social.example/users/evan')
+      .object('https://social.example/user/evan')
+      .to('https://social.example/user/evan')
       .publishedNow()
       .get()
-    await client.post('https://social.example/users/evan/inbox', obj, 'foobot')
-    assert.ok(signature)
-    assert.ok(digest)
-    assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+    const inbox = 'https://social.example/user/evan/inbox'
+    await client.post(inbox, obj, 'foobot')
+    assert.ok(signature[inbox])
+    assert.ok(digest[inbox])
+    assert.match(signature[inbox], /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+  })
+  it('can deliver an activity', async () => {
+    const obj = as2.follow()
+      .actor('https://botsrodeo.example/user/foobot')
+      .object('https://social.example/user/evan')
+      .to('https://social.example/user/evan')
+      .publishedNow()
+      .get()
+    const inbox = 'https://social.example/user/evan/inbox'
+    await client.post(inbox, obj, 'foobot')
+    assert.ok(signature[inbox])
+    assert.ok(digest[inbox])
+    assert.match(signature[inbox], /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
 })
