@@ -80,6 +80,10 @@ describe('ActivityPubClient', async () => {
         const objText = await obj.write()
         return [200, objText, { 'Content-Type': 'application/activity+json' }]
       })
+      .get(/\/user\/(\w+)\/inbox$/)
+      .reply(async function (uri, requestBody) {
+        return [403, 'Forbidden', { 'Content-Type': 'text/plain' }]
+      })
   })
   after(async () => {
     await connection.close()
@@ -137,5 +141,15 @@ describe('ActivityPubClient', async () => {
     assert.ok(signature[inbox])
     assert.ok(digest[inbox])
     assert.match(signature[inbox], /^keyId="https:\/\/botsrodeo\.example\/user\/foobot\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+  })
+  it('throws an error on a non-2xx response', async () => {
+    const inbox = 'https://social.example/user/evan/inbox'
+    try {
+      await client.get(inbox, 'foobot')
+      assert.fail('should have thrown')
+    } catch (error) {
+      assert.ok(error)
+      assert.equal(error.status, 403)
+    }
   })
 })
