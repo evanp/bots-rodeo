@@ -9,7 +9,7 @@ import { ActivityPubClient } from '../lib/activitypubclient.js'
 import assert from 'node:assert'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 
-const makeActor = (domain, username) =>
+const makeActor = (domain, username, shared = true) =>
   as2.import({
     id: `https://${domain}/user/${username}`,
     type: 'Person',
@@ -20,7 +20,7 @@ const makeActor = (domain, username) =>
     following: `https://${domain}/user/${username}/following`,
     liked: `https://${domain}/user/${username}/liked`,
     endpoints: {
-      sharedInbox: `https://${domain}/sharedInbox`
+      sharedInbox: (shared) ? `https://${domain}/sharedInbox` : null
     }
   })
 
@@ -201,6 +201,55 @@ describe('ActivityDistributor', () => {
         const username = match[1]
         const num = match[2]
         const obj = await makeObject('shared.example', username, num)
+        const objText = await obj.write()
+        return [200, objText, { 'Content-Type': 'application/activity+json' }]
+      })
+      .persist()
+
+    nock('https://flaky.example')
+      .get(/\/user\/(\w+)$/)
+      .reply(async (uri, requestBody) => {
+        const username = uri.match(/\/user\/(\w+)$/)[1]
+        if (username in postInbox) {
+          getActor[username] += 1
+        } else {
+          getActor[username] = 1
+        }
+        const actor = await makeActor('flaky.example', username)
+        const actorText = await actor.write()
+        return [200, actorText, { 'Content-Type': 'application/activity+json' }]
+      })
+      .persist()
+      .post(/\/user\/(\w+)\/inbox$/)
+      .reply(async (uri, requestBody) => {
+        const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
+        if (username in postInbox) {
+          postInbox[username] += 1
+          return [202, 'accepted']
+        } else {
+          postInbox[username] = 0
+          return [503, 'service unavailable']
+        }
+      })
+      .persist()
+      .post(/\/sharedInbox$/)
+      .reply(async (uri, requestBody) => {
+        const domain = 'flaky.example'
+        if (domain in postSharedInbox) {
+          postSharedInbox[domain] += 1
+          return [202, 'accepted']
+        } else {
+          postSharedInbox[domain] = 0
+          return [503, 'service unavailable']
+        }
+      })
+      .persist()
+      .get(/\/user\/(\w+)\/object\/(\d+)$/)
+      .reply(async (uri, requestBody) => {
+        const match = uri.match(/\/user\/(\w+)\/object\/(\d+)$/)
+        const username = match[1]
+        const num = match[2]
+        const obj = await makeObject('flaky.example', username, num)
         const objText = await obj.write()
         return [200, objText, { 'Content-Type': 'application/activity+json' }]
       })
@@ -454,5 +503,20 @@ describe('ActivityDistributor', () => {
     for (const i of nums) {
       assert.equal(postInbox[`test${i}`], 1, `did not delivery directly to test${i}`)
     }
+  })
+  it('retries delivery to a flaky recipient', async () => {
+    const activity = await as2.import({
+      id: 'https://botsrodeo.example/user/test0/intransitiveactivity/15',
+      type: 'IntransitiveActivity',
+      actor: 'https://botsrodeo.example/user/test0',
+      to: ['https://flaky.example/user/test1']
+    })
+    try {
+      await distributor.distribute(activity, 'test0')
+    } catch (error) {
+      assert.fail(`Error in distribution: ${error.message}`)
+    }
+    await new Promise((resolve) => setTimeout(resolve, 2000))
+    assert.equal(postSharedInbox['flaky.example'], 1)
   })
 })
