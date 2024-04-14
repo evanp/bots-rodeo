@@ -28,7 +28,7 @@ describe('server routes', async () => {
     it('should return an object with an id matching the origin', async () => {
       assert.strictEqual(response.body.id, origin + '/')
     })
-    it('should return an object with a publicKey', { skip: true }, async () => {
+    it('should return an object with a publicKey', async () => {
       assert.strictEqual(typeof response.body.publicKey, 'string')
     })
   })
@@ -52,18 +52,18 @@ describe('server routes', async () => {
     it('should return an object with an id matching the origin', async () => {
       assert.strictEqual(response.body.id, origin + '/publickey')
     })
-    it('should return an object with an owner', { skip: true }, async () => {
+    it('should return an object with an owner', async () => {
       assert.strictEqual(typeof response.body.owner, 'string')
     })
-    it('should return an object with the origin as owner', { skip: true }, async () => {
+    it('should return an object with the origin as owner', async () => {
       assert.strictEqual(response.body.owner, origin + '/')
     })
-    it('should return an object with a publicKeyPem', { skip: true }, async () => {
+    it('should return an object with a publicKeyPem', async () => {
       assert.strictEqual(typeof response.body.publicKeyPem, 'string')
     })
-    it('publicKeyPem should be an RSA PKCS-8 key', { skip: true }, async () => {
+    it('publicKeyPem should be an RSA PKCS-8 key', async () => {
       assert.match(response.body.publicKeyPem, /^-----BEGIN PUBLIC KEY-----\n/)
-      assert.match(response.body.publicKeyPem, /\n-----END PUBLIC KEY-----$/)
+      assert.match(response.body.publicKeyPem, /\n-----END PUBLIC KEY-----\n$/)
     })
   })
 })
