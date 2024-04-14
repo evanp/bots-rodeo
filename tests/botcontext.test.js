@@ -158,6 +158,17 @@ describe('BotContext', () => {
     const to = 'https://www.w3.org/ns/activitystreams#Public'
     note = await context.sendNote(content, { to })
     assert.ok(note)
+    assert.strictEqual(note.type, 'https://www.w3.org/ns/activitystreams#Note')
+    assert.strictEqual(await note.content.get(), content)
+    const iter = note.attributedTo[Symbol.iterator]()
+    const actor = iter.next().value
+    assert.strictEqual(actor.id, 'https://botsrodeo.example/user/test1')
+    const iter2 = note.to[Symbol.iterator]()
+    const addressee = iter2.next().value
+    assert.strictEqual(addressee.id, to)
+    assert.strictEqual(typeof note.published, 'object')
+    assert.strictEqual(typeof note.id, 'string')
+    await context.onIdle()
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 1)
@@ -170,6 +181,7 @@ describe('BotContext', () => {
     const id = 'https://social.example/user/test2/object/1'
     const obj = await context.getObject(id)
     await context.likeObject(obj)
+    await context.onIdle()
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 2)
@@ -182,6 +194,7 @@ describe('BotContext', () => {
     const id = 'https://social.example/user/test2/object/1'
     const obj = await context.getObject(id)
     await context.unlikeObject(obj)
+    await context.onIdle()
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 3)
@@ -193,6 +206,7 @@ describe('BotContext', () => {
   it('can follow an actor', async () => {
     actor3 = await makeActor('test3')
     await context.followActor(actor3)
+    await context.onIdle()
     assert.strictEqual(postInbox.test3, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 4)
@@ -203,6 +217,7 @@ describe('BotContext', () => {
   })
   it('can unfollow a pending actor', async () => {
     await context.unfollowActor(actor3)
+    await context.onIdle()
     assert.strictEqual(postInbox.test3, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 5)
@@ -217,6 +232,7 @@ describe('BotContext', () => {
     let following = await actorStorage.getCollection('test1', 'following')
     assert.strictEqual(following.totalItems, 1)
     await context.unfollowActor(actor4)
+    await context.onIdle()
     assert.strictEqual(postInbox.test4, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 6)
@@ -230,6 +246,7 @@ describe('BotContext', () => {
     assert.strictEqual(followers.totalItems, 1)
     actor5 = await makeActor('test5')
     await context.blockActor(actor5)
+    await context.onIdle()
     assert.ok(!postInbox.test5)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 7)
@@ -244,6 +261,7 @@ describe('BotContext', () => {
     let followers = await actorStorage.getCollection('test1', 'followers')
     assert.strictEqual(followers.totalItems, 1)
     await context.unblockActor(actor5)
+    await context.onIdle()
     assert.ok(!postInbox.test5)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 8)
@@ -263,6 +281,7 @@ describe('BotContext', () => {
     followers = await actorStorage.getCollection('test1', 'followers')
     assert.strictEqual(followers.totalItems, 2)
     await context.blockActor(actor6)
+    await context.onIdle()
     assert.ok(!postInbox.test6)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 9)
@@ -292,6 +311,7 @@ describe('BotContext', () => {
   it('can update a note', async () => {
     const content = 'Hello World 2'
     await context.updateNote(note, content)
+    await context.onIdle()
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 11)
@@ -302,6 +322,7 @@ describe('BotContext', () => {
   })
   it('can delete a note', async () => {
     await context.deleteNote(note)
+    await context.onIdle()
     assert.strictEqual(postInbox.test2, 1)
     const outbox = await actorStorage.getCollection('test1', 'outbox')
     assert.strictEqual(outbox.totalItems, 12)
@@ -317,6 +338,7 @@ describe('BotContext', () => {
     const id = 'https://social.example/user/test2/object/2'
     const obj = await context.getObject(id)
     await context.likeObject(obj)
+    await context.onIdle()
     try {
       await context.likeObject(obj)
       assert.fail('Expected an error')
