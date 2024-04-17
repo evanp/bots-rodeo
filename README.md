@@ -1,2 +1,3 @@
-# activitypub-bot
-An ActivityPub server-side bot framework
+# bots-rodeo
+
+An ActivityPub server-side bot framework 🤠
