@@ -4,6 +4,8 @@ import { ActorStorage } from '../lib/actorstorage.js'
 import { Sequelize } from 'sequelize'
 import { UrlFormatter } from '../lib/urlformatter.js'
 import { ObjectStorage } from '../lib/objectstorage.js'
+import { KeyStorage } from '../lib/keystorage.js'
+import { ActivityPubClient } from '../lib/activitypubclient.js'
 import as2 from 'activitystrea.ms'
 import assert from 'node:assert/strict'
 import { nanoid } from 'nanoid'
@@ -14,6 +16,9 @@ describe('Authorizer', () => {
   let formatter = null
   let connection = null
   let objectStorage = null
+  let keyStorage = null
+  let client = null
+
   let actor1 = null
   let actor2 = null
   let actor3 = null
@@ -23,6 +28,8 @@ describe('Authorizer', () => {
   let remoteUnconnected = null
   let remoteFollower = null
   let remoteAddressee = null
+  let remotePublicObject = null
+  let remotePrivateObject = null
 
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
@@ -32,6 +39,9 @@ describe('Authorizer', () => {
     await actorStorage.initialize()
     objectStorage = new ObjectStorage(connection)
     await objectStorage.initialize()
+    keyStorage = new KeyStorage(connection)
+    await keyStorage.initialize()
+    client = new ActivityPubClient(actorStorage, objectStorage, client)
     actor1 = await actorStorage.getActor('test1')
     actor2 = await actorStorage.getActor('test2')
     await actorStorage.addToCollection(
@@ -96,6 +106,18 @@ describe('Authorizer', () => {
       attributedTo: actor1.id,
       to: [actor2.id, remoteAddressee.id]
     })
+    remotePublicObject = await as2.import({
+      id: 'https://remote.example/user/remote1/object/1',
+      type: 'Object',
+      attributedTo: remoteUnconnected.id,
+      to: 'as:Public'
+    })
+    remotePrivateObject = await as2.import({
+      id: 'https://remote.example/user/remote1/object/2',
+      type: 'Object',
+      attributedTo: remoteUnconnected.id,
+      to: actor2.id
+    })
   })
 
   after(async () => {
@@ -113,7 +135,7 @@ describe('Authorizer', () => {
 
   it('can be instantiated', async () => {
     try {
-      authorizer = new Authorizer(actorStorage, formatter)
+      authorizer = new Authorizer(actorStorage, formatter, client)
       assert.strictEqual(typeof authorizer, 'object')
     } catch (error) {
       assert.fail(error)
@@ -212,5 +234,17 @@ describe('Authorizer', () => {
 
   it('can check that a remote addressee can read a private local object', async () => {
     assert.strictEqual(true, await authorizer.canRead(remoteAddressee, privateObject))
+  })
+
+  it('can check that a local actor can read a public remote object', async () => {
+    assert.strictEqual(true, await authorizer.canRead(actor1, remotePublicObject))
+  })
+
+  it('can check that a local non-addressee cannot read a private remote object', async () => {
+    assert.strictEqual(null, await authorizer.canRead(actor1, remotePrivateObject))
+  })
+
+  it('can check that a local addressee can read a private remote object', async () => {
+    assert.strictEqual(true, await authorizer.canRead(actor2, remotePrivateObject))
   })
 })
