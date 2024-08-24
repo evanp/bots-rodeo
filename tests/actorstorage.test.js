@@ -40,6 +40,7 @@ describe('ActorStorage', () => {
     assert.ok(actor.followers)
     assert.ok(actor.following)
     assert.ok(actor.liked)
+    assert.strictEqual(actor.get('preferredUsername').first, 'test')
   })
   it('can get an empty collection', async () => {
     const collection = await storage.getCollection('test', 'followers')
