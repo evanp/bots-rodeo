@@ -20,6 +20,9 @@ describe('Authorizer', () => {
   let publicObject = null
   let followersOnlyObject = null
   let privateObject = null
+  let remoteUnconnected = null
+  let remoteFollower = null
+  let remoteAddressee = null
 
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
@@ -37,6 +40,29 @@ describe('Authorizer', () => {
       actor2
     )
     actor3 = await actorStorage.getActor('test3')
+    remoteUnconnected = await as2.import({
+      id: 'https://remote.example/user/remote1',
+      type: 'Person',
+      preferredUsername: 'remote1',
+      to: 'as:Public'
+    })
+    remoteFollower = await as2.import({
+      id: 'https://remote.example/user/remote2',
+      type: 'Person',
+      preferredUsername: 'remote2',
+      to: 'as:Public'
+    })
+    await actorStorage.addToCollection(
+      'test1',
+      'followers',
+      remoteFollower
+    )
+    remoteAddressee = await as2.import({
+      id: 'https://remote.example/user/remote3',
+      type: 'Person',
+      preferredUsername: 'remote3',
+      to: 'as:Public'
+    })
     publicObject = await as2.import({
       id: formatter.format({
         username: 'test1',
@@ -68,7 +94,7 @@ describe('Authorizer', () => {
       }),
       type: 'Object',
       attributedTo: actor1.id,
-      to: actor2.id
+      to: [actor2.id, remoteAddressee.id]
     })
   })
 
@@ -146,5 +172,45 @@ describe('Authorizer', () => {
 
   it('can check if the null actor can read a private local object', async () => {
     assert.strictEqual(false, await authorizer.canRead(null, privateObject))
+  })
+
+  it('can check that an unconnected remote actor can read a public local object', async () => {
+    assert.strictEqual(true, await authorizer.canRead(remoteUnconnected, publicObject))
+  })
+
+  it('can check that an unconnected remote actor cannot read a followers-only local object', async () => {
+    assert.strictEqual(
+      false,
+      await authorizer.canRead(remoteUnconnected, followersOnlyObject)
+    )
+  })
+
+  it('can check that an unconnected remote actor cannot read a private local object', async () => {
+    assert.strictEqual(
+      false,
+      await authorizer.canRead(remoteUnconnected, privateObject)
+    )
+  })
+
+  it('can check that a remote follower can read a public local object', async () => {
+    assert.strictEqual(true, await authorizer.canRead(remoteFollower, publicObject))
+  })
+
+  it('can check that a remote follower can read a followers-only local object', async () => {
+    assert.strictEqual(
+      true,
+      await authorizer.canRead(remoteFollower, followersOnlyObject)
+    )
+  })
+
+  it('can check that a remote follower cannot read a private local object', async () => {
+    assert.strictEqual(
+      false,
+      await authorizer.canRead(remoteFollower, privateObject)
+    )
+  })
+
+  it('can check that a remote addressee can read a private local object', async () => {
+    assert.strictEqual(true, await authorizer.canRead(remoteAddressee, privateObject))
   })
 })
