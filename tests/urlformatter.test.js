@@ -80,4 +80,8 @@ describe('UrlFormatter', () => {
     assert.ok(formatter.isLocal('https://botsrodeo.example/user/megabot'))
     assert.ok(!formatter.isLocal('https://social.example/user/megabot'))
   })
+  it('can get a username from a user URL', () => {
+    const username = formatter.getUserName('https://botsrodeo.example/user/megabot')
+    assert.equal(username, 'megabot')
+  })
 })
