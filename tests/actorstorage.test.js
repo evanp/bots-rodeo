@@ -42,6 +42,18 @@ describe('ActorStorage', () => {
     assert.ok(actor.liked)
     assert.strictEqual(actor.get('preferredUsername').first, 'test')
   })
+
+  it('can get an actor by id', async () => {
+    const actor = await storage.getActorById('https://social.example/user/test')
+    assert.ok(actor)
+    assert.ok(actor.id)
+    assert.ok(actor.inbox)
+    assert.ok(actor.outbox)
+    assert.ok(actor.followers)
+    assert.ok(actor.following)
+    assert.ok(actor.liked)
+    assert.strictEqual(actor.get('preferredUsername').first, 'test')
+  })
   it('can get an empty collection', async () => {
     const collection = await storage.getCollection('test', 'followers')
     assert.ok(collection)
