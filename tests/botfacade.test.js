@@ -10,6 +10,7 @@ import { ActivityPubClient } from '../lib/activitypubclient.js'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 import { ActorStorage } from '../lib/actorstorage.js'
 import { Authorizer } from '../lib/authorizer.js'
+import { ObjectCache } from '../lib/objectcache.js'
 import as2 from 'activitystrea.ms'
 import nock from 'nock'
 import bots from './fixtures/bots.js'
@@ -43,9 +44,10 @@ describe('BotFacade', () => {
   let formatter = null
   let client = null
   let distributor = null
-  let authorizer = null
+  let authz = null
   let cache = null
   let postInbox = {}
+  let facade = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -60,6 +62,8 @@ describe('BotFacade', () => {
     await actorStorage.initialize()
     client = new ActivityPubClient(keyStorage, formatter)
     distributor = new ActivityDistributor(client, formatter, actorStorage)
+    authz = new Authorizer(actorStorage, formatter, client)
+    cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
@@ -98,6 +102,9 @@ describe('BotFacade', () => {
   })
   after(async () => {
     await connection.close()
+    facade = null
+    cache = null
+    authz = null
     distributor = null
     client = null
     formatter = null
@@ -113,7 +120,7 @@ describe('BotFacade', () => {
   it('can initialize', async () => {
     const username = 'ok'
     const bot = bots[username]
-    const facade = new BotFacade(
+    facade = new BotFacade(
       username,
       bot,
       actorStorage,
@@ -122,6 +129,7 @@ describe('BotFacade', () => {
       formatter,
       cache,
       authz
-      )
     )
+    assert.ok(facade)
   })
+})
