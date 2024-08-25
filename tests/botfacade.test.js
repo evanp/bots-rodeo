@@ -139,15 +139,47 @@ describe('BotFacade', () => {
   it('can handle a create activity', async () => {
     const activity = await as2.import({
       type: 'Create',
-      actor: 'https://remote.example/user/remote1',
-      id: 'https://remote.example/user/remote1/create/1',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/create/1',
       object: {
-        id: 'https://remote.example/user/remote1/note/1',
+        id: 'https://social.example/user/remote1/note/1',
         type: 'Note',
         content: 'Hello, world!'
       }
     })
     await facade.handleCreate(activity)
+    assert.ok(true)
+  })
+  it('can handle a create activity with a reply', async () => {
+    const oid = formatter.format({
+      username: 'ok',
+      type: 'note',
+      nanoid: 'k5MtHI1aGle4RocLqnw7x'
+    })
+    const original = await as2.import({
+      id: oid,
+      type: 'Note',
+      attributedTo: formatter.format({ username: 'ok' }),
+      to: 'https://www.w3.org/ns/activitystreams#Public',
+      content: 'Original note'
+    })
+    await objectStorage.create(original)
+    const activity = await as2.import({
+      type: 'Create',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/object/3',
+      object: {
+        inReplyTo: oid,
+        id: 'https://social.example/user/remote1/object/4',
+        type: 'Note',
+        content: 'Reply note'
+      }
+    })
+    const collection = await objectStorage.getCollection(oid, 'replies')
+    assert.equal(collection.totalItems, 0)
+    await facade.handleCreate(activity)
+    const collection2 = await objectStorage.getCollection(oid, 'replies')
+    assert.equal(collection2.totalItems, 1)
     assert.ok(true)
   })
 })
