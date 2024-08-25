@@ -144,8 +144,10 @@ describe('BotFacade', () => {
       object: {
         id: 'https://social.example/user/remote1/note/1',
         type: 'Note',
-        content: 'Hello, world!'
-      }
+        content: 'Hello, world!',
+        to: 'as:Public'
+      },
+      to: 'as:Public'
     })
     await facade.handleCreate(activity)
     const cached = await cache.get(activity.object?.first.id)
@@ -173,8 +175,10 @@ describe('BotFacade', () => {
         inReplyTo: oid,
         id: 'https://social.example/user/remote1/object/4',
         type: 'Note',
-        content: 'Reply note'
-      }
+        content: 'Reply note',
+        to: 'as:Public'
+      },
+      to: 'as:Public'
     })
     const collection = await objectStorage.getCollection(oid, 'replies')
     assert.equal(collection.totalItems, 0)
@@ -193,8 +197,10 @@ describe('BotFacade', () => {
       object: {
         id: 'https://social.example/user/remote1/note/1',
         type: 'Note',
-        content: 'Hello, world! (updated)'
-      }
+        content: 'Hello, world! (updated)',
+        to: 'as:Public'
+      },
+      to: 'as:Public'
     })
     await facade.handleUpdate(activity)
     const cached = await cache.get(activity.object?.first.id)
@@ -205,10 +211,70 @@ describe('BotFacade', () => {
       type: 'Delete',
       actor: 'https://social.example/user/remote1',
       id: 'https://social.example/user/remote1/delete/1',
-      object: 'https://social.example/user/remote1/note/1'
+      object: 'https://social.example/user/remote1/note/1',
+      to: 'as:Public'
     })
     await facade.handleDelete(activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached, undefined)
+  })
+  it('can handle an add activity', async () => {
+    const activity = await as2.import({
+      type: 'Add',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/add/1',
+      object: {
+        id: 'https://social.example/user/remote1/note/1',
+        type: 'Note',
+        attributedTo: 'https://social.example/user/remote1',
+        to: 'as:Public'
+      },
+      target: {
+        id: 'https://social.example/user/remote1/collection/1',
+        type: 'Collection',
+        attributedTo: 'https://social.example/user/remote1',
+        to: 'as:Public'
+      },
+      to: 'as:Public'
+    })
+    await facade.handleAdd(activity)
+    const cached = await cache.get(activity.object?.first.id)
+    assert.equal(cached.id, activity.object?.first.id)
+    const cached2 = await cache.get(activity.target?.first.id)
+    assert.equal(cached2.id, activity.target?.first.id)
+    assert.equal(
+      true,
+      await cache.isMember(activity.target?.first, activity.object?.first)
+    )
+  })
+
+  it('can handle a remove activity', async () => {
+    const activity = await as2.import({
+      type: 'Remove',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/remove/1',
+      object: {
+        id: 'https://social.example/user/remote1/note/1',
+        type: 'Note',
+        attributedTo: 'https://social.example/user/remote1',
+        to: 'as:Public'
+      },
+      target: {
+        id: 'https://social.example/user/remote1/collection/1',
+        type: 'Collection',
+        attributedTo: 'https://social.example/user/remote1',
+        to: 'as:Public'
+      },
+      to: 'as:Public'
+    })
+    await facade.handleRemove(activity)
+    const cached = await cache.get(activity.object?.first.id)
+    assert.equal(cached.id, activity.object?.first.id)
+    const cached2 = await cache.get(activity.target?.first.id)
+    assert.equal(cached2.id, activity.target?.first.id)
+    assert.equal(
+      false,
+      await cache.isMember(activity.target?.first, activity.object?.first)
+    )
   })
 })
