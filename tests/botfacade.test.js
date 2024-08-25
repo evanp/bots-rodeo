@@ -132,4 +132,18 @@ describe('BotFacade', () => {
     )
     assert.ok(facade)
   })
+  it('can handle a create activity', async () => {
+    const activity = await as2.import({
+      type: 'Create',
+      actor: 'https://remote.example/user/remote1',
+      id: 'https://remote.example/user/remote1/create/1',
+      object: {
+        id: 'https://remote.example/user/remote1/note/1',
+        type: 'Note',
+        content: 'Hello, world!'
+      }
+    })
+    await facade.handleCreate(activity)
+    assert.ok(true)
+  })
 })
