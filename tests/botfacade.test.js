@@ -12,6 +12,7 @@ import { ActorStorage } from '../lib/actorstorage.js'
 import { Authorizer } from '../lib/authorizer.js'
 import { ObjectCache } from '../lib/objectcache.js'
 import as2 from 'activitystrea.ms'
+import Logger from 'pino'
 import nock from 'nock'
 import bots from './fixtures/bots.js'
 
@@ -48,6 +49,7 @@ describe('BotFacade', () => {
   let cache = null
   let postInbox = {}
   let facade = null
+  let logger = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -64,6 +66,7 @@ describe('BotFacade', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
+    logger = Logger()
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
@@ -128,7 +131,8 @@ describe('BotFacade', () => {
       distributor,
       formatter,
       cache,
-      authz
+      authz,
+      logger
     )
     assert.ok(facade)
   })
