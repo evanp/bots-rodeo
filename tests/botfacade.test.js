@@ -148,7 +148,8 @@ describe('BotFacade', () => {
       }
     })
     await facade.handleCreate(activity)
-    assert.ok(true)
+    const cached = await cache.get(activity.object?.first.id)
+    assert.equal(cached.content, 'Hello, world!')
   })
   it('can handle a create activity with a reply', async () => {
     const oid = formatter.format({
@@ -183,5 +184,31 @@ describe('BotFacade', () => {
     await facade.onIdle()
     assert.equal(postInbox.remote1, 1)
     assert.ok(true)
+  })
+  it('can handle an update activity', async () => {
+    const activity = await as2.import({
+      type: 'Update',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/update/1',
+      object: {
+        id: 'https://social.example/user/remote1/note/1',
+        type: 'Note',
+        content: 'Hello, world! (updated)'
+      }
+    })
+    await facade.handleUpdate(activity)
+    const cached = await cache.get(activity.object?.first.id)
+    assert.equal(cached.content, 'Hello, world! (updated)')
+  })
+  it('can handle a delete activity', async () => {
+    const activity = await as2.import({
+      type: 'Delete',
+      actor: 'https://social.example/user/remote1',
+      id: 'https://social.example/user/remote1/delete/1',
+      object: 'https://social.example/user/remote1/note/1'
+    })
+    await facade.handleDelete(activity)
+    const cached = await cache.get(activity.object?.first.id)
+    assert.equal(cached, undefined)
   })
 })
