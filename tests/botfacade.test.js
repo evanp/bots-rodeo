@@ -180,6 +180,8 @@ describe('BotFacade', () => {
     await facade.handleCreate(activity)
     const collection2 = await objectStorage.getCollection(oid, 'replies')
     assert.equal(collection2.totalItems, 1)
+    await facade.onIdle()
+    assert.equal(postInbox.remote1, 1)
     assert.ok(true)
   })
 })
