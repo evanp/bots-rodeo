@@ -7,6 +7,7 @@ import { Sequelize } from 'sequelize'
 describe('ObjectStorage', async () => {
   let doc = null
   let doc2 = null
+  let doc3 = null
   let connection = null
   let storage = null
   before(async () => {
@@ -24,6 +25,13 @@ describe('ObjectStorage', async () => {
       name: 'test',
       content: 'test',
       inReplyTo: doc.id
+    })
+    doc3 = await as2.import({
+      '@context': 'https://www.w3.org/ns/activitystreams',
+      id: 'https://social.example/users/test/note/3',
+      type: 'Note',
+      name: 'test',
+      content: 'test'
     })
     connection = new Sequelize('sqlite::memory:', { logging: false })
     await connection.authenticate()
@@ -86,6 +94,10 @@ describe('ObjectStorage', async () => {
     await storage.addToCollection(doc.id, 'replies', doc2)
     const page = await storage.getCollectionPage(doc.id, 'replies', 1)
     assert.ok(Array.from(page.items).find(item => item.id === doc2.id))
+  })
+  it('can check collection membership', async () => {
+    assert.strictEqual(true, await storage.isInCollection(doc.id, 'replies', doc2))
+    assert.strictEqual(false, await storage.isInCollection(doc.id, 'replies', doc3))
   })
   it('can remove from a collection', async () => {
     await storage.removeFromCollection(doc.id, 'replies', doc2)
