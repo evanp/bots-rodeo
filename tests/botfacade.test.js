@@ -50,6 +50,7 @@ describe('BotFacade', () => {
   let postInbox = {}
   let facade = null
   let logger = null
+  let botId = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -66,7 +67,8 @@ describe('BotFacade', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
-    logger = Logger()
+    logger = Logger({ level: 'silent' })
+    botId = formatter.format({ username: 'ok' })
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
@@ -276,5 +278,66 @@ describe('BotFacade', () => {
       false,
       await cache.isMember(activity.target?.first, activity.object?.first)
     )
+  })
+  it('can handle a follow activity', async () => {
+    const actor = await makeActor('follower1')
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor))
+    const activity = await as2.import({
+      type: 'Follow',
+      id: 'https://social.example/user/follower1/follow/1',
+      actor: actor.id,
+      object: botId,
+      to: botId
+    })
+    await facade.handleFollow(activity)
+    assert.equal(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor))
+    await facade.onIdle()
+    assert.equal(postInbox.follower1, 1)
+  })
+  it('can handle a duplicate follow activity', async () => {
+    const actor = await makeActor('follower2')
+    await actorStorage.addToCollection('ok', 'followers', actor)
+    const activity = await as2.import({
+      type: 'Follow',
+      id: 'https://social.example/user/follower2/follow/2',
+      actor: actor.id,
+      object: botId,
+      to: botId
+    })
+    await facade.handleFollow(activity)
+    assert.equal(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor))
+    await facade.onIdle()
+    assert.ok(!postInbox.follower2)
+  })
+  it('can handle a follow from a blocked account', async () => {
+    const actor = await makeActor('follower3')
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'blocked', actor)
+    )
+    const activity = await as2.import({
+      type: 'Follow',
+      id: 'https://social.example/user/follower3/follow/1',
+      actor: actor.id,
+      object: botId,
+      to: botId
+    })
+    await facade.handleFollow(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor))
+    await facade.onIdle()
+    assert.ok(!postInbox.follower3)
   })
 })
