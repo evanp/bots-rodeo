@@ -34,7 +34,7 @@ describe('BotDataStorage', async () => {
   })
   it('raises an error on a non-existent value', async () => {
     try {
-      const value = await storage.get('test', 'nonexistent2')
+      await storage.get('test', 'nonexistent2')
       assert.fail('Did not raise an exception getting a nonexistent key')
     } catch (e) {
       assert.ok(e instanceof NoSuchValueError)
@@ -49,7 +49,7 @@ describe('BotDataStorage', async () => {
   })
   it('raises an error on a deleted value', async () => {
     try {
-      const value = await storage.get('test', 'key1')
+      await storage.get('test', 'key1')
       assert.fail('Did not raise an exception getting a deleted key')
     } catch (e) {
       assert.ok(e instanceof NoSuchValueError)
