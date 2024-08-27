@@ -493,4 +493,157 @@ describe('BotFacade', () => {
       true,
       await actorStorage.isInCollection('calculon', 'pendingFollowing', followActivity))
   })
+  it('can handle an reject activity', async () => {
+    const actor = await makeActor('rejecter1')
+    const followActivity = await as2.import({
+      type: 'Follow',
+      id: 'https://botsrodeo.example/user/ok/follow/101',
+      actor: botId,
+      object: actor.id,
+      to: actor.id
+    })
+    await objectStorage.create(followActivity)
+    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter1/reject/1',
+      actor: actor.id,
+      object: followActivity.id,
+      to: botId
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+  })
+  it('can ignore an reject activity for a non-existing follow', async () => {
+    const actor = await makeActor('rejecter2')
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter2/reject/1',
+      actor: actor.id,
+      object: 'https://botsrodeo.example/user/ok/follow/69',
+      to: botId
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+  })
+  it('can ignore an reject activity from a blocked account', async () => {
+    const actor = await makeActor('rejecter3')
+    const followActivity = await as2.import({
+      type: 'Follow',
+      id: 'https://botsrodeo.example/user/ok/follow/103',
+      actor: botId,
+      object: actor.id,
+      to: actor.id
+    })
+    await objectStorage.create(followActivity)
+    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter3/reject/1',
+      actor: actor.id,
+      object: followActivity.id,
+      to: botId
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+  })
+
+  it('can ignore an reject activity for a remote follow activity', async () => {
+    const actor = await makeActor('rejecter4')
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter4/reject/1',
+      actor: actor.id,
+      object: {
+        type: 'Follow',
+        id: 'https://third.example/user/other/follow/103',
+        actor: 'https://third.example/user/other',
+        object: actor.id,
+        to: [actor.id, 'as:Public']
+      },
+      to: ['https://third.example/user/other', 'as:Public']
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+  })
+  it('can ignore an reject activity for a follow of a different actor', async () => {
+    const actor5 = await makeActor('rejecter5')
+    const actor6 = await makeActor('rejecter6')
+    const followActivity = await as2.import({
+      type: 'Follow',
+      id: 'https://botsrodeo.example/user/ok/follow/106',
+      actor: botId,
+      object: actor6.id,
+      to: [actor6.id, 'as:Public']
+    })
+    await objectStorage.create(followActivity)
+    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor5))
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter5/reject/1',
+      actor: actor5.id,
+      object: followActivity.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor5))
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor6))
+    assert.equal(
+      true,
+      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+  })
+  it('can ignore an reject activity for a follow by a different actor', async () => {
+    const actor7 = await makeActor('rejecter7')
+    const followActivity = await as2.import({
+      type: 'Follow',
+      id: 'https://botsrodeo.example/user/calculon/follow/107',
+      actor: 'https://botsrodeo.example/user/calculon',
+      object: actor7.id,
+      to: [actor7.id, 'as:Public']
+    })
+    await objectStorage.create(followActivity)
+    await actorStorage.addToCollection('calculon', 'pendingFollowing', followActivity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor7))
+    const activity = await as2.import({
+      type: 'Reject',
+      id: 'https://social.example/user/rejecter7/reject/7',
+      actor: actor7.id,
+      object: followActivity.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleReject(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor7))
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('calculon', 'following', actor7))
+    assert.equal(
+      true,
+      await actorStorage.isInCollection('calculon', 'pendingFollowing', followActivity))
+  })
 })
