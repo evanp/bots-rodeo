@@ -126,4 +126,12 @@ describe('ObjectStorage', async () => {
     assert.ok(page.items)
     assert.equal(Array.from(page.items).length, 20)
   })
+  it('can iterate over a collection', async () => {
+    const seen = new Set()
+    for await (const item of storage.items(doc.id, 'replies')) {
+      assert.ok(!(item.id in seen))
+      seen.add(item.id)
+    }
+    assert.strictEqual(seen.size, 100)
+  })
 })
