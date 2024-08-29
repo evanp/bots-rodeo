@@ -1059,4 +1059,38 @@ describe('BotFacade', () => {
       await objectStorage.isInCollection(note.id, 'shares', activity2)
     )
   })
+  it('can handle a block activity', async () => {
+    const actor = await makeActor('blocker1')
+    await actorStorage.addToCollection('ok', 'followers', actor)
+    await actorStorage.addToCollection('ok', 'following', actor)
+    const activity = await as2.import({
+      type: 'Block',
+      id: 'https://social.example/user/blocker1/block/1',
+      actor: actor.id,
+      object: botId,
+      to: botId
+    })
+    await facade.handleBlock(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor))
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'following', actor))
+  })
+  it('can handle a block activity for a pending user', async () => {
+    const actor = await makeActor('blocker2')
+    await actorStorage.addToCollection('ok', 'pendingFollowing', actor)
+    const activity = await as2.import({
+      type: 'Block',
+      id: 'https://social.example/user/blocker2/block/1',
+      actor: actor.id,
+      object: botId,
+      to: botId
+    })
+    await facade.handleBlock(activity)
+    assert.equal(
+      false,
+      await actorStorage.isInCollection('ok', 'pendingFollowing', actor))
+  })
 })
