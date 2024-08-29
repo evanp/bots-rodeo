@@ -1093,4 +1093,38 @@ describe('BotFacade', () => {
       false,
       await actorStorage.isInCollection('ok', 'pendingFollowing', actor))
   })
+  it('can handle a flag activity for an actor', async () => {
+    const actor = await makeActor('flagger1')
+    const activity = await as2.import({
+      type: 'Flag',
+      actor: actor.id,
+      id: 'https://social.example/user/flagger1/flag/1',
+      object: botId,
+      to: [botId, formatter.format({ server: true })]
+    })
+    await facade.handleFlag(activity)
+  })
+  it('can handle a flag activity for an object', async () => {
+    const actor = await makeActor('flagger2')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'h3q3QZy2BzYwX7a4vJ5v3'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Flag',
+      actor: actor.id,
+      id: 'https://social.example/user/flagger2/flag/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFlag(activity)
+  })
 })
