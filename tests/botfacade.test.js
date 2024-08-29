@@ -1127,4 +1127,28 @@ describe('BotFacade', () => {
     })
     await facade.handleFlag(activity)
   })
+  it('can handle an undo for an unrecognized activity type', async () => {
+    const actor = await makeActor('undoer1')
+    const activity = await as2.import({
+      '@context': [
+        'https://www.w3.org/ns/activitystreams',
+        {
+          ex: 'https://example.com/ns/',
+          Foo: {
+            '@id': 'ex:Foo',
+            '@type': '@id'
+          }
+        }
+      ],
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer1/undo/1',
+      object: {
+        type: 'Foo',
+        id: 'https://social.example/user/undoer1/foo/1'
+      },
+      to: botId
+    })
+    await facade.handleUndo(activity)
+  })
 })
