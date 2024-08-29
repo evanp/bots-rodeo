@@ -67,7 +67,7 @@ describe('BotFacade', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
-    logger = Logger({ level: 'debug' })
+    logger = Logger({ level: 'silent' })
     botId = formatter.format({ username: 'ok' })
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
@@ -851,6 +851,212 @@ describe('BotFacade', () => {
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity2)
+    )
+  })
+  it('can handle an announce activity', async () => {
+    const actor = await makeActor('announcer1')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'odQN6GR4v71ZxN1wsstvl'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer1/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', activity)
+    )
+    await facade.onIdle()
+    assert.equal(postInbox.announcer1, 1)
+  })
+  it('can ignore an announce activity for a remote object', async () => {
+    const actor = await makeActor('announcer2')
+    const objectId = 'https://third.example/user/other/note/1'
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer2/announce/1',
+      object: objectId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(objectId, 'shares', activity)
+    )
+  })
+  it('can ignore an announce activity for a non-existing object', async () => {
+    const actor = await makeActor('announcer3')
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer3/announce/1',
+      object: 'https://botsrodeo.example/user/ok/note/doesnotexist',
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(activity.object?.first.id, 'shares', activity)
+    )
+  })
+  it('can ignore an announce activity from a blocked account', async () => {
+    const actor = await makeActor('announcer4')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'GMvbLj8rKzbtx1kvjCGUm'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer4/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection(note.id, 'shares', activity)
+    )
+  })
+  it('can ignore an announce activity for an unreadable object', async () => {
+    const actor = await makeActor('announcer5')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'yWyHTZH9VtAA1ViEl7sil'
+      }),
+      type: 'Note',
+      content: 'Private note @other',
+      to: [formatter.format({ username: 'other' })],
+      tags: [{ type: 'Mention', href: formatter.format({ username: 'other' }) }]
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer4/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', activity)
+    )
+  })
+  it('can ignore an announce activity for an object by a different actor', async () => {
+    const actor = await makeActor('announcer6')
+    const note = await as2.import({
+      attributedTo: formatter.format({ username: 'other' }),
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'CoI4vcLRjG7f9Sj9yK-6g'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: ['as:Public']
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer6/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', activity)
+    )
+  })
+  it('can ignore a duplicate announce activity', async () => {
+    const actor = await makeActor('announcer7')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'ndzHHtejBL83v3iiqsl4L'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: ['as:Public']
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer7/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', activity)
+    )
+  })
+  it('can ignore an announce activity by an actor that has shared before', async () => {
+    const actor = await makeActor('announcer8')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '7AAsKT9oKqM3PnXELNYB7'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: [formatter.format({ username: 'other' })]
+    })
+    await objectStorage.create(note)
+    const activity1 = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer8/announce/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    const activity2 = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: 'https://social.example/user/announcer8/announce/2',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity1)
+    await facade.handleAnnounce(activity2)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', activity2)
     )
   })
 })
