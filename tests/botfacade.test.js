@@ -296,7 +296,8 @@ describe('BotFacade', () => {
       true,
       await actorStorage.isInCollection('ok', 'followers', actor))
     await facade.onIdle()
-    assert.equal(postInbox.follower1, 1)
+    // accept and add
+    assert.equal(postInbox.follower1, 2)
   })
   it('can handle a duplicate follow activity', async () => {
     const actor = await makeActor('follower2')
@@ -645,5 +646,211 @@ describe('BotFacade', () => {
     assert.equal(
       true,
       await actorStorage.isInCollection('calculon', 'pendingFollowing', followActivity))
+  })
+  it('can handle a like activity', async () => {
+    const actor = await makeActor('liker1')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '_SivlqjrNpdV3KOJ6cC3L'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker1/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+    await facade.onIdle()
+    assert.equal(postInbox.liker1, 1)
+  })
+  it('can ignore a like activity for a remote object', async () => {
+    const actor = await makeActor('liker2')
+    const objectId = 'https://third.example/user/other/note/1'
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker2/like/1',
+      object: objectId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(objectId, 'likes', activity)
+    )
+  })
+  it('can ignore a like activity for a non-existing object', async () => {
+    const actor = await makeActor('liker3')
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker3/like/1',
+      object: 'https://botsrodeo.example/user/ok/note/doesnotexist',
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(activity.object?.first.id, 'likes', activity)
+    )
+  })
+  it('can ignore a like activity from a blocked account', async () => {
+    const actor = await makeActor('liker4')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'wpOmBSs04osbTtYoR9C8p'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker4/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore a like activity for an unreadable object', async () => {
+    const actor = await makeActor('liker5')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '9FZgbPv3G6MYKGPir0eI6'
+      }),
+      type: 'Note',
+      content: 'Private note @other',
+      to: [formatter.format({ username: 'other' })],
+      tags: [{ type: 'Mention', href: formatter.format({ username: 'other' }) }]
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker4/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore a like activity for an object by a different actor', async () => {
+    const actor = await makeActor('liker6')
+    const note = await as2.import({
+      attributedTo: formatter.format({ username: 'other' }),
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'p8YbioA43kgZR41N3-tb2'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: ['as:Public']
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker6/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore a duplicate like activity', async () => {
+    const actor = await makeActor('liker7')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'TyCJRI4aMmW2KWtDZSCVM'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: ['as:Public']
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker7/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore a like activity by an actor that has liked before', async () => {
+    const actor = await makeActor('liker8')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '49s-F59oxQ6dX4SFiCqNg'
+      }),
+      type: 'Note',
+      content: 'Public note',
+      to: [formatter.format({ username: 'other' })]
+    })
+    await objectStorage.create(note)
+    const activity1 = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker8/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    const activity2 = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/liker8/like/2',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity1)
+    await facade.handleLike(activity2)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', activity2)
+    )
   })
 })
