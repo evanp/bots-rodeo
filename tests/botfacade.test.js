@@ -1151,4 +1151,307 @@ describe('BotFacade', () => {
     })
     await facade.handleUndo(activity)
   })
+  it('can handle an undo for a like activity', async () => {
+    const actor = await makeActor('undoer2')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'aQ8TL9jHhudjiQSqE8tYN'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer2/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer2/undo/1',
+      object: {
+        type: 'Like',
+        id: activity.id,
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore an undo for a like activity with a different actor', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'elgLDhn0kty204Tk8rcMD'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const liker = await makeActor('liker9')
+    const likeActivity = await as2.import({
+      type: 'Like',
+      actor: liker.id,
+      id: 'https://social.example/user/liker9/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(likeActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const undoer = await makeActor('undoer3')
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: undoer.id,
+      id: 'https://social.example/user/undoer3/undo/1',
+      object: likeActivity.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+  })
+  it('can ignore an undo for a like activity of a remote object', async () => {
+    const actor = await makeActor('undoer4')
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer4/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer4/like/1',
+        actor: 'https://social.example/user/undoer4',
+        object: 'https://third.example/user/other/note/1',
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a like activity of a non-existent object', async () => {
+    const actor = await makeActor('undoer5')
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer5/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer5/like/1',
+        actor: actor.id,
+        object: 'https://botsrodeo.example/user/ok/note/doesnotexist',
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a like activity of an unreadable object', async () => {
+    const actor = await makeActor('undoer6')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'C-pFLhIGnM1XlpmXgNlfW'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: formatter.format({ username: 'other', collection: 'followers' })
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer6/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer6/like/1',
+        actor: actor.id,
+        object: note.id,
+        to: [botId]
+      },
+      to: [botId]
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a like activity of a blocked actor', async () => {
+    const actor = await makeActor('undoer7')
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'rV_iftsHDMdAQBqfgg8DD'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer7/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer7/like/1',
+        actor: actor.id,
+        object: note.id,
+        to: [botId]
+      },
+      to: [botId]
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a like activity that has already been undone', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'KxQLHLAENW_CpMycvcpx4'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const actor = await makeActor('undoer8')
+    const likeActivity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer8/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(likeActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer8/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer8/like/1',
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const duplicateActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer8/undo/2',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer8/like/1',
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(duplicateActivity)
+    assert.ok(true)
+  })
+  it('can handle an undo for a like activity followed by another like', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'LE2yKAebFSmMqSjN6naLl'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const actor = await makeActor('undoer9')
+    const likeActivity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer9/like/1',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(likeActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer9/undo/1',
+      object: {
+        type: 'Like',
+        id: 'https://social.example/user/undoer9/like/1',
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const reLikeActivity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer9/like/2',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(reLikeActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', reLikeActivity)
+    )
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+  })
 })
