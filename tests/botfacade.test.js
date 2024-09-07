@@ -16,25 +16,101 @@ import Logger from 'pino'
 import nock from 'nock'
 import bots from './fixtures/bots.js'
 
-const makeActor = (username) =>
+const makeActor = (username, domain = 'social.example') =>
   as2.import({
-    id: `https://social.example/user/${username}`,
+    id: `https://${domain}/user/${username}`,
     type: 'Person',
     preferredUsername: username,
-    inbox: `https://social.example/user/${username}/inbox`,
-    outbox: `https://social.example/user/${username}/outbox`,
-    followers: `https://social.example/user/${username}/followers`,
-    following: `https://social.example/user/${username}/following`,
-    liked: `https://social.example/user/${username}/liked`
+    inbox: `https://${domain}/user/${username}/inbox`,
+    outbox: `https://${domain}/user/${username}/outbox`,
+    followers: `https://${domain}/user/${username}/followers`,
+    following: `https://${domain}/user/${username}/following`,
+    liked: `https://${domain}/user/${username}/liked`,
+    to: ['as:Public']
   })
 
-const makeObject = (username, num) =>
+// Just the types we use here
+const isActivityType = (type) => ['Create', 'Update', 'Delete', 'Add', 'Remove', 'Follow', 'Accept', 'Reject', 'Like', 'Block', 'Flag', 'Undo'].includes(uppercase(type))
+
+const makeObject = (username, type, num, domain = 'social.example') =>
   as2.import({
-    id: `https://social.example/user/${username}/object/${num}`,
-    type: 'Object',
-    attributedTo: `https://social.example/user/${username}`,
-    to: 'https://www.w3.org/ns/activitystreams#Public'
+    id: `https://${domain}/user/${username}/${type}/${num}`,
+    type: uppercase(type),
+    to: 'https://www.w3.org/ns/activitystreams#Public',
+    actor: (isActivityType(type) ? `https://${domain}/user/${username}` : undefined),
+    attributedTo: (isActivityType(type) ? undefined : `https://${domain}/user/${username}`)
   })
+
+const makeTransitive = (username, type, num, obj, domain = 'social.example') =>
+  as2.import({
+    id: `https://${domain}/user/${username}/${type}/${num}/${obj}`,
+    type: uppercase(type),
+    to: 'https://www.w3.org/ns/activitystreams#Public',
+    actor: `https://${domain}/user/${username}`,
+    object: `https://${obj}`
+  })
+
+const uppercase = (str) => str.charAt(0).toUpperCase() + str.slice(1)
+
+let postInbox = {}
+
+const nockSetup = (nock, domain) =>
+  nock(`https://${domain}`)
+    .get(/\/user\/(\w+)$/)
+    .reply(async (uri, requestBody) => {
+      const username = uri.match(/\/user\/(\w+)$/)[1]
+      const actor = await makeActor(username, domain)
+      const actorText = await actor.write()
+      return [200, actorText, { 'Content-Type': 'application/activity+json' }]
+    })
+    .persist()
+    .post(/\/user\/(\w+)\/inbox$/)
+    .reply(async (uri, requestBody) => {
+      const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
+      if (username in postInbox) {
+        postInbox[username] += 1
+      } else {
+        postInbox[username] = 1
+      }
+      return [202, 'accepted']
+    })
+    .persist()
+    .get(/\/user\/(\w+)\/(\w+)\/(\d+)$/)
+    .reply(async (uri, requestBody) => {
+      const match = uri.match(/\/user\/(\w+)\/(\w+)\/(\d+)$/)
+      const username = match[1]
+      const type = uppercase(match[2])
+      const num = match[3]
+      const obj = await makeObject(username, type, num, domain)
+      const objText = await obj.write()
+      return [200, objText, { 'Content-Type': 'application/activity+json' }]
+    })
+    .get(/\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
+    .reply(async (uri, requestBody) => {
+      const match = uri.match(/\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
+      const username = match[1]
+      const type = match[2]
+      const num = match[3]
+      const obj = match[4]
+      const act = await makeTransitive(username, type, num, obj, domain)
+      const actText = await act.write()
+      return [200, actText, { 'Content-Type': 'application/activity+json' }]
+    })
+
+function nockFormat ({ username, type, num, obj, domain = 'social.example' }) {
+  let url = `https://${domain}/user/${username}`
+  if (type && num) {
+    url = `${url}/${type}/${num}`
+    if (obj) {
+      if (obj.startsWith('https://')) {
+        url = `${url}/${obj.slice(8)}`
+      } else {
+        url = `${url}/${obj}`
+      }
+    }
+  }
+  return url
+}
 
 describe('BotFacade', () => {
   let connection = null
@@ -47,7 +123,6 @@ describe('BotFacade', () => {
   let distributor = null
   let authz = null
   let cache = null
-  let postInbox = {}
   let facade = null
   let logger = null
   let botId = null
@@ -67,7 +142,7 @@ describe('BotFacade', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
-    logger = Logger({ level: 'silent' })
+    logger = Logger({ level: 'debug' })
     botId = formatter.format({ username: 'ok' })
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
@@ -75,35 +150,8 @@ describe('BotFacade', () => {
       attributedTo: formatter.format({ username: 'test1' }),
       to: 'https://www.w3.org/ns/activitystreams#Public'
     }))
-    nock('https://social.example')
-      .get(/\/user\/(\w+)$/)
-      .reply(async (uri, requestBody) => {
-        const username = uri.match(/\/user\/(\w+)$/)[1]
-        const actor = await makeActor(username)
-        const actorText = await actor.write()
-        return [200, actorText, { 'Content-Type': 'application/activity+json' }]
-      })
-      .persist()
-      .post(/\/user\/(\w+)\/inbox$/)
-      .reply(async (uri, requestBody) => {
-        const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
-        if (username in postInbox) {
-          postInbox[username] += 1
-        } else {
-          postInbox[username] = 1
-        }
-        return [202, 'accepted']
-      })
-      .persist()
-      .get(/\/user\/(\w+)\/object\/(\d+)$/)
-      .reply(async (uri, requestBody) => {
-        const match = uri.match(/\/user\/(\w+)\/object\/(\d+)$/)
-        const username = match[1]
-        const num = match[2]
-        const obj = await makeObject(username, num)
-        const objText = await obj.write()
-        return [200, objText, { 'Content-Type': 'application/activity+json' }]
-      })
+    nockSetup(nock, 'social.example')
+    nockSetup(nock, 'third.example')
   })
   after(async () => {
     await connection.close()
@@ -134,15 +182,16 @@ describe('BotFacade', () => {
       formatter,
       cache,
       authz,
-      logger
+      logger,
+      client
     )
     assert.ok(facade)
   })
   it('can handle a create activity', async () => {
     const activity = await as2.import({
       type: 'Create',
-      actor: 'https://social.example/user/remote1',
-      id: 'https://social.example/user/remote1/create/1',
+      actor: nockFormat({ username: 'remote1' }),
+      id: nockFormat({ username: 'remote1', type: 'create', num: 1 }),
       object: {
         id: 'https://social.example/user/remote1/note/1',
         type: 'Note',
@@ -1209,11 +1258,11 @@ describe('BotFacade', () => {
       to: 'as:Public'
     })
     await objectStorage.create(note)
-    const liker = await makeActor('liker9')
+    const liker = await makeActor('liker9', 'third.example')
     const likeActivity = await as2.import({
       type: 'Like',
       actor: liker.id,
-      id: 'https://social.example/user/liker9/like/1',
+      id: nockFormat({ domain: 'third.example', username: 'liker9', type: 'like', num: 1, obj: note.id }),
       object: note.id,
       to: [botId, 'as:Public']
     })
@@ -1222,12 +1271,15 @@ describe('BotFacade', () => {
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
     )
-    const undoer = await makeActor('undoer3')
+    const undoer = await makeActor('undoer3', 'social.example')
     const undoActivity = await as2.import({
       type: 'Undo',
       actor: undoer.id,
-      id: 'https://social.example/user/undoer3/undo/1',
-      object: likeActivity.id,
+      id: nockFormat({ domain: 'social.example', username: 'undoer3', type: 'undo', num: 1, obj: likeActivity.id }),
+      object: {
+        type: 'Like',
+        id: likeActivity.id
+      },
       to: [botId, 'as:Public']
     })
     await facade.handleUndo(undoActivity)
@@ -1449,6 +1501,45 @@ describe('BotFacade', () => {
       true,
       await objectStorage.isInCollection(note.id, 'likes', reLikeActivity)
     )
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+  })
+  it('can handle an undo for a like activity by id', async () => {
+    const actor = await makeActor('undoer10')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'nhzIHLcnHgU2l0lMb7dRl'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const likeActivity = await as2.import({
+      type: 'Like',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer10/like/1/botsrodeo.example/user/ok/note/nhzIHLcnHgU2l0lMb7dRl',
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleLike(likeActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: 'https://social.example/user/undoer2/undo/1/social.example/user/undoer10/like/1/botsrodeo.example/user/ok/note/nhzIHLcnHgU2l0lMb7dRl',
+      object: likeActivity.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
