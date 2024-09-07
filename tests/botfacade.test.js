@@ -34,19 +34,19 @@ const isActivityType = (type) => ['Create', 'Update', 'Delete', 'Add', 'Remove',
 
 const makeObject = (username, type, num, domain = 'social.example') =>
   as2.import({
-    id: `https://${domain}/user/${username}/${type}/${num}`,
+    id: nockFormat({ username, type, num, domain }),
     type: uppercase(type),
-    to: 'https://www.w3.org/ns/activitystreams#Public',
-    actor: (isActivityType(type) ? `https://${domain}/user/${username}` : undefined),
-    attributedTo: (isActivityType(type) ? undefined : `https://${domain}/user/${username}`)
+    to: 'as:Public',
+    actor: (isActivityType(type) ? nockFormat({ username, domain }) : undefined),
+    attributedTo: (isActivityType(type) ? undefined : nockFormat({ username, domain }))
   })
 
 const makeTransitive = (username, type, num, obj, domain = 'social.example') =>
   as2.import({
-    id: `https://${domain}/user/${username}/${type}/${num}/${obj}`,
+    id: nockFormat({ username, type, num, obj, domain }),
     type: uppercase(type),
-    to: 'https://www.w3.org/ns/activitystreams#Public',
-    actor: `https://${domain}/user/${username}`,
+    to: 'as:Public',
+    actor: nockFormat({ username, domain }),
     object: `https://${obj}`
   })
 
@@ -56,17 +56,17 @@ let postInbox = {}
 
 const nockSetup = (nock, domain) =>
   nock(`https://${domain}`)
-    .get(/\/user\/(\w+)$/)
+    .get(/^\/user\/(\w+)$/)
     .reply(async (uri, requestBody) => {
-      const username = uri.match(/\/user\/(\w+)$/)[1]
+      const username = uri.match(/^\/user\/(\w+)$/)[1]
       const actor = await makeActor(username, domain)
       const actorText = await actor.write()
       return [200, actorText, { 'Content-Type': 'application/activity+json' }]
     })
     .persist()
-    .post(/\/user\/(\w+)\/inbox$/)
+    .post(/^\/user\/(\w+)\/inbox$/)
     .reply(async (uri, requestBody) => {
-      const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
+      const username = uri.match(/^\/user\/(\w+)\/inbox$/)[1]
       if (username in postInbox) {
         postInbox[username] += 1
       } else {
@@ -75,9 +75,9 @@ const nockSetup = (nock, domain) =>
       return [202, 'accepted']
     })
     .persist()
-    .get(/\/user\/(\w+)\/(\w+)\/(\d+)$/)
+    .get(/^\/user\/(\w+)\/(\w+)\/(\d+)$/)
     .reply(async (uri, requestBody) => {
-      const match = uri.match(/\/user\/(\w+)\/(\w+)\/(\d+)$/)
+      const match = uri.match(/^\/user\/(\w+)\/(\w+)\/(\d+)$/)
       const username = match[1]
       const type = uppercase(match[2])
       const num = match[3]
@@ -85,9 +85,9 @@ const nockSetup = (nock, domain) =>
       const objText = await obj.write()
       return [200, objText, { 'Content-Type': 'application/activity+json' }]
     })
-    .get(/\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
+    .get(/^\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
     .reply(async (uri, requestBody) => {
-      const match = uri.match(/\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
+      const match = uri.match(/^\/user\/(\w+)\/(\w+)\/(\d+)\/(.*)$/)
       const username = match[1]
       const type = match[2]
       const num = match[3]
@@ -148,7 +148,7 @@ describe('BotFacade', () => {
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
       attributedTo: formatter.format({ username: 'test1' }),
-      to: 'https://www.w3.org/ns/activitystreams#Public'
+      to: 'as:Public'
     }))
     nockSetup(nock, 'social.example')
     nockSetup(nock, 'third.example')
@@ -214,7 +214,7 @@ describe('BotFacade', () => {
       id: oid,
       type: 'Note',
       attributedTo: formatter.format({ username: 'ok' }),
-      to: 'https://www.w3.org/ns/activitystreams#Public',
+      to: 'as:Public',
       content: 'Original note'
     })
     await objectStorage.create(original)
@@ -1969,6 +1969,264 @@ describe('BotFacade', () => {
         to: ['as:Public']
       },
       to: ['as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.ok(true)
+  })
+  it('can handle an undo for a follow activity', async () => {
+    const username = 'undoer23'
+    const actor = await makeActor(username)
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 1, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: botId
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+  })
+  it('can handle an undo for a follow by id', async () => {
+    const username = 'undoer24'
+    const actor = await makeActor(username)
+    const followActivityId = nockFormat({ username, type: 'follow', num: 1, obj: botId })
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: followActivityId,
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: followActivityId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+  })
+  it('can ignore an undo for a follow activity of another user', async () => {
+    const username = 'undoer25'
+    const actor = await makeActor(username)
+    const otherId = nockFormat({ username: 'other', domain: 'third.example' })
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 1, obj: otherId }),
+      object: otherId,
+      to: ['as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: otherId,
+        to: ['as:Public']
+      },
+      to: ['as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a follow activity by another user', async () => {
+    const username = 'undoer26'
+    const otherName = 'other'
+    const actor = await makeActor(username)
+    const other = await makeActor(otherName, 'third.example')
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: other.id,
+      id: nockFormat({ domain: 'third.example', username: otherName, type: 'follow', num: 1, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', other)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: other.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', other)
+    )
+  })
+  it('can handle an undo for a follow activity followed by another follow', async () => {
+    const username = 'undoer27'
+    const actor = await makeActor(username)
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 1, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const reFollowActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 2, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(reFollowActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+  })
+  it('can ignore an undo for a follow activity that has already been undone', async () => {
+    const username = 'undoer28'
+    const actor = await makeActor(username)
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 1, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      true,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const duplicateActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 2, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(duplicateActivity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a follow activity by a blocked actor', async () => {
+    const username = 'undoer29'
+    const actor = await makeActor(username)
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const followActivity = await as2.import({
+      type: 'Follow',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'follow', num: 1, obj: botId }),
+      object: botId,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleFollow(followActivity)
+    assert.strictEqual(
+      false,
+      await actorStorage.isInCollection('ok', 'followers', actor)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username, type: 'undo', num: 1, obj: followActivity.id }),
+      object: {
+        type: 'Follow',
+        id: followActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
     })
     await facade.handleUndo(undoActivity)
     assert.ok(true)
