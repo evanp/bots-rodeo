@@ -142,7 +142,7 @@ describe('BotFacade', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
-    logger = Logger({ level: 'debug' })
+    logger = Logger({ level: 'silent' })
     botId = formatter.format({ username: 'ok' })
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
@@ -1543,6 +1543,357 @@ describe('BotFacade', () => {
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
+    )
+  })
+  it('can handle an undo for a share activity', async () => {
+    const actor = await makeActor('undoer11')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '1lLOwN_Xo6NOitowWyMYM'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const activity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer11', type: 'announce', num: 1, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(activity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', activity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer11', type: 'undo', num: 1, obj: activity.id }),
+      object: {
+        type: activity.type,
+        id: activity.id,
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'likes', activity)
+    )
+  })
+  it('can ignore an undo for a share activity with a different actor', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'kmK_TdUg1l8hasDwa7hGo'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const sharer = await makeActor('sharer10', 'third.example')
+    const shareActivity = await as2.import({
+      type: 'Announce',
+      actor: sharer.id,
+      id: nockFormat({ domain: 'third.example', username: 'sharer10', type: 'announce', num: 1, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(shareActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const undoer = await makeActor('undoer12', 'social.example')
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: undoer.id,
+      id: nockFormat({ domain: 'social.example', username: 'undoer12', type: 'undo', num: 1, obj: shareActivity.id }),
+      object: {
+        type: 'Announce',
+        id: shareActivity.id
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+  })
+  it('can ignore an undo for a share activity of a remote object', async () => {
+    const actor = await makeActor('undoer13')
+    const remoteObjectId = nockFormat({ domain: 'third.example', username: 'other', type: 'note', num: 1 })
+    const announceActivityId = nockFormat({ username: 'undoer13', type: 'announce', num: 1, obj: remoteObjectId })
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer13', type: 'undo', num: 1, obj: announceActivityId }),
+      object: {
+        type: 'Announce',
+        id: announceActivityId,
+        actor: actor.id,
+        object: remoteObjectId,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a share activity of a non-existent object', async () => {
+    const actor = await makeActor('undoer14')
+    const dne = formatter.format({ username: 'ok', type: 'note', nanoid: 'doesnotexist' })
+    const announceActivityId = nockFormat({ username: 'undoer14', type: 'announce', num: 1, obj: dne })
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer14', type: 'undo', num: 1, obj: announceActivityId }),
+      object: {
+        type: 'Announce',
+        id: announceActivityId,
+        actor: actor.id,
+        object: dne,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a share activity of an unreadable object', async () => {
+    const actor = await makeActor('undoer15')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'mQ--bYVZLm9miMOUrbYU5'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: formatter.format({ username: 'ok', collection: 'followers' })
+    })
+    await objectStorage.create(note)
+    const announceActivityId = nockFormat({ username: 'undoer15', type: 'announce', num: 1, obj: note.id })
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer15', type: 'undo', num: 1, obj: announceActivityId }),
+      object: {
+        type: 'Announce',
+        id: announceActivityId,
+        actor: actor.id,
+        object: note.id,
+        to: [botId]
+      },
+      to: [botId]
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a share activity of a blocked actor', async () => {
+    const actor = await makeActor('undoer16')
+    await actorStorage.addToCollection('ok', 'blocked', actor)
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'fbsPvVofkIcWt8HZA7NpK'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const shareActivityId = nockFormat({ username: 'undoer16', type: 'announce', num: 1, obj: note.id })
+    const activity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer16', type: 'undo', num: 1, obj: shareActivityId }),
+      object: {
+        type: 'Announce',
+        id: shareActivityId,
+        actor: actor.id,
+        object: note.id,
+        to: [botId]
+      },
+      to: [botId]
+    })
+    await facade.handleUndo(activity)
+    assert.ok(true)
+  })
+  it('can ignore an undo for a share activity that has already been undone', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: '0YpKR9l9ugvaAx2V-WPUd'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const actor = await makeActor('undoer17')
+    const shareActivity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer17', type: 'announce', num: 1, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(shareActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer17', type: 'undo', num: 1, obj: shareActivity.id }),
+      object: {
+        type: 'Announce',
+        id: shareActivity.id,
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const duplicateActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer17', type: 'undo', num: 2, obj: shareActivity.id }),
+      object: {
+        type: 'Announce',
+        id: shareActivity.id,
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(duplicateActivity)
+    assert.ok(true)
+  })
+  it('can handle an undo for a share activity followed by another share', async () => {
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'DzCmKY2rzy7tWNr7CJvf1'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const actor = await makeActor('undoer18')
+    const shareActivity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer18', type: 'announce', num: 1, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(shareActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer18', type: 'undo', num: 1, obj: shareActivity.id }),
+      object: {
+        type: 'Announce',
+        id: shareActivity.id,
+        actor: actor.id,
+        object: note.id,
+        to: [botId, 'as:Public']
+      },
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const reShareActivity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer18', type: 'announce', num: 2, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(reShareActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', reShareActivity)
+    )
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+  })
+  it('can handle an undo for a share activity by id', async () => {
+    const actor = await makeActor('undoer19')
+    const note = await as2.import({
+      attributedTo: botId,
+      id: formatter.format({
+        username: 'ok',
+        type: 'note',
+        nanoid: 'YYTvtiZm4h9J8jMsWS3Gq'
+      }),
+      type: 'Note',
+      content: 'Hello, world!',
+      to: 'as:Public'
+    })
+    await objectStorage.create(note)
+    const shareActivity = await as2.import({
+      type: 'Announce',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer19', type: 'announce', num: 1, obj: note.id }),
+      object: note.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleAnnounce(shareActivity)
+    assert.strictEqual(
+      true,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
+    )
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer19', type: 'undo', num: 1, obj: shareActivity.id }),
+      object: shareActivity.id,
+      to: [botId, 'as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.strictEqual(
+      false,
+      await objectStorage.isInCollection(note.id, 'shares', shareActivity)
     )
   })
 })
