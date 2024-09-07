@@ -1,6 +1,6 @@
-class OKBot {
-  #context = null
+import Bot from '../../lib/bot.js'
 
+class OKBot extends Bot {
   get fullname () {
     return 'OK Bot'
   }
@@ -9,12 +9,8 @@ class OKBot {
     return 'A bot that says "OK" when mentioned.'
   }
 
-  async initialize (context) {
-    this.#context = context
-  }
-
   async onMention (object) {
-    await this.#context.sendNote('OK', { to: object.attributedTo })
+    await this._context.sendNote('OK', { to: object.attributedTo })
   }
 }
 
