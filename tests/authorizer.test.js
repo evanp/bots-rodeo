@@ -247,4 +247,52 @@ describe('Authorizer', () => {
   it('can check that a local addressee can read a private remote object', async () => {
     assert.strictEqual(true, await authorizer.canRead(actor2, remotePrivateObject))
   })
+
+  it('can check that two objects have the same origin', async () => {
+    const object1 = await as2.import({
+      id: 'https://example.com/object/1',
+      type: 'Object'
+    })
+    const object2 = await as2.import({
+      id: 'https://example.com/object/2',
+      type: 'Object'
+    })
+    assert.strictEqual(true, await authorizer.sameOrigin(object1, object2))
+  })
+
+  it('can check that two objects have different origins', async () => {
+    const object1 = await as2.import({
+      id: 'https://example.com/object/1',
+      type: 'Object'
+    })
+    const object2 = await as2.import({
+      id: 'https://other.example/object/2',
+      type: 'Object'
+    })
+    assert.strictEqual(false, await authorizer.sameOrigin(object1, object2))
+  })
+
+  it('can check that two objects have different origins by port', async () => {
+    const object1 = await as2.import({
+      id: 'https://example.com/object/1',
+      type: 'Object'
+    })
+    const object2 = await as2.import({
+      id: 'https://example.com:8000/object/2',
+      type: 'Object'
+    })
+    assert.strictEqual(false, await authorizer.sameOrigin(object1, object2))
+  })
+
+  it('can check that two objects have different origins by protocol', async () => {
+    const object1 = await as2.import({
+      id: 'https://example.com/object/1',
+      type: 'Object'
+    })
+    const object2 = await as2.import({
+      id: 'http://example.com/object/2',
+      type: 'Object'
+    })
+    assert.strictEqual(false, await authorizer.sameOrigin(object1, object2))
+  })
 })
