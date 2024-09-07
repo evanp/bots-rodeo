@@ -256,6 +256,6 @@ describe('ActorStorage', () => {
     console.log(await actor.write())
     assert.ok(Array.isArray(actor.type))
     assert.ok(actor.type.includes(AS2_NS + 'Person'))
-    assert.ok(actor.type.includes(AS2_NS + 'Application'))
+    assert.ok(actor.type.includes(AS2_NS + 'Service'))
   })
 })
