@@ -1896,4 +1896,81 @@ describe('BotFacade', () => {
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
     )
   })
+  it('can handle an undo for a block activity', async () => {
+    const actor = await makeActor('undoer20')
+    const blockActivity = await as2.import({
+      type: 'Block',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer20', type: 'block', num: 1, obj: botId }),
+      object: botId,
+      to: botId
+    })
+    await facade.handleBlock(blockActivity)
+    assert.ok(true)
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer20', type: 'undo', num: 1, obj: blockActivity.id }),
+      object: {
+        type: 'Block',
+        id: blockActivity.id,
+        actor: actor.id,
+        object: botId,
+        to: botId
+      },
+      to: botId
+    })
+    await facade.handleUndo(undoActivity)
+    assert.ok(true)
+  })
+  it('can handle an undo for a block activity by id', async () => {
+    const actor = await makeActor('undoer21')
+    const blockActivity = await as2.import({
+      type: 'Block',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer21', type: 'block', num: 1, obj: botId }),
+      object: botId,
+      to: botId
+    })
+    await facade.handleBlock(blockActivity)
+    assert.ok(true)
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer21', type: 'undo', num: 1, obj: blockActivity.id }),
+      object: blockActivity.id,
+      to: botId
+    })
+    await facade.handleUndo(undoActivity)
+    assert.ok(true)
+  })
+
+  it('can ignore an undo for a block activity of another user', async () => {
+    const actor = await makeActor('undoer22')
+    const otherId = nockFormat({ username: 'other', domain: 'third.example' })
+    const blockActivity = await as2.import({
+      type: 'Block',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer22', type: 'block', num: 1, obj: otherId }),
+      object: otherId,
+      to: ['as:Public']
+    })
+    await facade.handleBlock(blockActivity)
+    assert.ok(true)
+    const undoActivity = await as2.import({
+      type: 'Undo',
+      actor: actor.id,
+      id: nockFormat({ username: 'undoer22', type: 'undo', num: 1, obj: blockActivity.id }),
+      object: {
+        type: 'Block',
+        id: blockActivity.id,
+        actor: actor.id,
+        object: otherId,
+        to: ['as:Public']
+      },
+      to: ['as:Public']
+    })
+    await facade.handleUndo(undoActivity)
+    assert.ok(true)
+  })
 })
