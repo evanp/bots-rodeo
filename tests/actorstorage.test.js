@@ -5,6 +5,8 @@ import { Sequelize } from 'sequelize'
 import { UrlFormatter } from '../lib/urlformatter.js'
 import as2 from 'activitystrea.ms'
 
+const AS2_NS = 'https://www.w3.org/ns/activitystreams#'
+
 describe('ActorStorage', () => {
   let connection = null
   let storage = null
@@ -232,5 +234,28 @@ describe('ActorStorage', () => {
     )
     collection = await storage.getCollection('test7', 'liked')
     assert.strictEqual(collection.totalItems, 2)
+  })
+  it('can get an actor with custom properties', async () => {
+    const props = {
+      name: 'Test User',
+      summary: 'A test user',
+      type: 'Person'
+    }
+    const actor = await storage.getActor('test8', props)
+    assert.ok(actor)
+    assert.ok(actor.id)
+    assert.ok(actor.inbox)
+    assert.ok(actor.outbox)
+    assert.ok(actor.followers)
+    assert.ok(actor.following)
+    assert.ok(actor.liked)
+    assert.strictEqual(actor.get('preferredUsername').first, 'test8')
+    assert.strictEqual(actor.name.get(), 'Test User')
+    assert.strictEqual(actor.summary.get(), 'A test user')
+    console.log(actor.type)
+    console.log(await actor.write())
+    assert.ok(Array.isArray(actor.type))
+    assert.ok(actor.type.includes(AS2_NS + 'Person'))
+    assert.ok(actor.type.includes(AS2_NS + 'Application'))
   })
 })
