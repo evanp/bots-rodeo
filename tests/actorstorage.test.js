@@ -70,7 +70,7 @@ describe('ActorStorage', () => {
     assert.ok(page)
     assert.strictEqual(
       page.id,
-      'https://botsrodeo.example/user/test/followers/page/1'
+      'https://botsrodeo.example/user/test/followers/1'
     )
     assert.strictEqual(page.type, 'https://www.w3.org/ns/activitystreams#OrderedCollectionPage')
     assert.strictEqual(
@@ -122,7 +122,7 @@ describe('ActorStorage', () => {
     assert.strictEqual(collection.totalItems, 100)
     const page = await storage.getCollectionPage('test4', 'liked', 3)
     assert.strictEqual(page.items.length, 20)
-    assert.strictEqual(page.next.id, 'https://botsrodeo.example/user/test4/liked/page/2')
+    assert.strictEqual(page.next.id, 'https://botsrodeo.example/user/test4/liked/2')
   })
   it('can iterate over a collection', async () => {
     const seen = new Set()
