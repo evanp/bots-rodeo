@@ -26,7 +26,7 @@ describe('UrlFormatter', () => {
       collection: 'inbox',
       page: 3
     })
-    assert.equal(url, 'https://botsrodeo.example/user/megabot/inbox/page/3')
+    assert.equal(url, 'https://botsrodeo.example/user/megabot/inbox/3')
   })
   it('can format an activity URL', () => {
     const url = formatter.format({
@@ -61,7 +61,7 @@ describe('UrlFormatter', () => {
       collection: 'replies',
       page: 4
     })
-    assert.equal(url, 'https://botsrodeo.example/user/megabot/note/LNPUlv9kmvhAdr4eoqkil/replies/page/4')
+    assert.equal(url, 'https://botsrodeo.example/user/megabot/note/LNPUlv9kmvhAdr4eoqkil/replies/4')
   })
   it('can format a server URL', () => {
     const url = formatter.format({
