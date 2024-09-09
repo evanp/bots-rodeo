@@ -312,7 +312,7 @@ describe('actor collection routes', async () => {
     })
   })
 
-  describe('GET /usr/{botid}/inbox', async () => {
+  describe('GET /user/{botid}/inbox', async () => {
     let response = null
     it('should work without an error', async () => {
       response = await request(app).get('/user/ok/inbox')
@@ -352,7 +352,7 @@ describe('actor collection routes', async () => {
     })
   })
 
-  describe('GET /usr/{botid}/inbox/1', async () => {
+  describe('GET /user/{botid}/inbox/1', async () => {
     let response = null
     it('should work without an error', async () => {
       response = await request(app).get('/user/ok/inbox/1')
