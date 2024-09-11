@@ -1,6 +1,6 @@
 import { describe, it, before, after, beforeEach } from 'node:test'
 import assert from 'node:assert'
-import { BotFacade } from '../lib/botfacade.js'
+import { ActivityHandler } from '../lib/activityhandler.js'
 import { Sequelize } from 'sequelize'
 import { BotDataStorage } from '../lib/botdatastorage.js'
 import { ObjectStorage } from '../lib/objectstorage.js'
@@ -16,7 +16,9 @@ import Logger from 'pino'
 import bots from './fixtures/bots.js'
 import { nockSetup, postInbox, makeActor, nockFormat } from './utils/nock.js'
 
-describe('BotFacade', () => {
+describe('ActivityHandler', () => {
+  const domain = 'botsrodeo.example'
+  const origin = `https://${domain}`
   let connection = null
   let botDataStorage = null
   let objectStorage = null
@@ -27,11 +29,13 @@ describe('BotFacade', () => {
   let distributor = null
   let authz = null
   let cache = null
-  let facade = null
+  let handler = null
   let logger = null
   let botId = null
+  const botName = 'ok'
+  let bot = null
   before(async () => {
-    formatter = new UrlFormatter('https://botsrodeo.example')
+    formatter = new UrlFormatter(origin)
     connection = new Sequelize('sqlite::memory:', { logging: false })
     await connection.authenticate()
     botDataStorage = new BotDataStorage(connection)
@@ -47,7 +51,8 @@ describe('BotFacade', () => {
     authz = new Authorizer(actorStorage, formatter, client)
     cache = new ObjectCache({ longTTL: 3600 * 1000, shortTTL: 300 * 1000, maxItems: 1000 })
     logger = Logger({ level: 'silent' })
-    botId = formatter.format({ username: 'ok' })
+    botId = formatter.format({ username: botName })
+    bot = bots[botName]
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
@@ -59,7 +64,7 @@ describe('BotFacade', () => {
   })
   after(async () => {
     await connection.close()
-    facade = null
+    handler = null
     cache = null
     authz = null
     distributor = null
@@ -75,11 +80,7 @@ describe('BotFacade', () => {
     Object.assign(postInbox, {})
   })
   it('can initialize', async () => {
-    const username = 'ok'
-    const bot = bots[username]
-    facade = new BotFacade(
-      username,
-      bot,
+    handler = new ActivityHandler(
       actorStorage,
       objectStorage,
       distributor,
@@ -89,7 +90,7 @@ describe('BotFacade', () => {
       logger,
       client
     )
-    assert.ok(facade)
+    assert.ok(handler)
   })
   it('can handle a create activity', async () => {
     const activity = await as2.import({
@@ -104,20 +105,20 @@ describe('BotFacade', () => {
       },
       to: 'as:Public'
     })
-    await facade.handleCreate(activity)
+    await handler.handleActivity(bot, activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached.content, 'Hello, world!')
   })
   it('can handle a create activity with a reply', async () => {
     const oid = formatter.format({
-      username: 'ok',
+      username: botName,
       type: 'note',
       nanoid: 'k5MtHI1aGle4RocLqnw7x'
     })
     const original = await as2.import({
       id: oid,
       type: 'Note',
-      attributedTo: formatter.format({ username: 'ok' }),
+      attributedTo: formatter.format({ username: botName }),
       to: 'as:Public',
       content: 'Original note'
     })
@@ -137,10 +138,10 @@ describe('BotFacade', () => {
     })
     const collection = await objectStorage.getCollection(oid, 'replies')
     assert.equal(collection.totalItems, 0)
-    await facade.handleCreate(activity)
+    await handler.handleActivity(bot, activity)
     const collection2 = await objectStorage.getCollection(oid, 'replies')
     assert.equal(collection2.totalItems, 1)
-    await facade.onIdle()
+    await handler.onIdle()
     assert.equal(postInbox.remote1, 1)
     assert.ok(true)
   })
@@ -157,7 +158,7 @@ describe('BotFacade', () => {
       },
       to: 'as:Public'
     })
-    await facade.handleUpdate(activity)
+    await handler.handleActivity(bot, activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached.content, 'Hello, world! (updated)')
   })
@@ -169,7 +170,7 @@ describe('BotFacade', () => {
       object: 'https://social.example/user/remote1/note/1',
       to: 'as:Public'
     })
-    await facade.handleDelete(activity)
+    await handler.handleActivity(bot, activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached, undefined)
   })
@@ -192,7 +193,7 @@ describe('BotFacade', () => {
       },
       to: 'as:Public'
     })
-    await facade.handleAdd(activity)
+    await handler.handleActivity(bot, activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached.id, activity.object?.first.id)
     const cached2 = await cache.get(activity.target?.first.id)
@@ -222,7 +223,7 @@ describe('BotFacade', () => {
       },
       to: 'as:Public'
     })
-    await facade.handleRemove(activity)
+    await handler.handleActivity(bot, activity)
     const cached = await cache.get(activity.object?.first.id)
     assert.equal(cached.id, activity.object?.first.id)
     const cached2 = await cache.get(activity.target?.first.id)
@@ -236,7 +237,7 @@ describe('BotFacade', () => {
     const actor = await makeActor('follower1')
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor))
+      await actorStorage.isInCollection(botName, 'followers', actor))
     const activity = await as2.import({
       type: 'Follow',
       id: 'https://social.example/user/follower1/follow/1',
@@ -244,17 +245,17 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleFollow(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor))
-    await facade.onIdle()
+      await actorStorage.isInCollection(botName, 'followers', actor))
+    await handler.onIdle()
     // accept and add
     assert.equal(postInbox.follower1, 2)
   })
   it('can handle a duplicate follow activity', async () => {
     const actor = await makeActor('follower2')
-    await actorStorage.addToCollection('ok', 'followers', actor)
+    await actorStorage.addToCollection(botName, 'followers', actor)
     const activity = await as2.import({
       type: 'Follow',
       id: 'https://social.example/user/follower2/follow/2',
@@ -262,23 +263,23 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleFollow(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor))
-    await facade.onIdle()
+      await actorStorage.isInCollection(botName, 'followers', actor))
+    await handler.onIdle()
     assert.ok(!postInbox.follower2)
   })
   it('can handle a follow from a blocked account', async () => {
     const actor = await makeActor('follower3')
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'blocked', actor)
+      await actorStorage.isInCollection(botName, 'blocked', actor)
     )
     const activity = await as2.import({
       type: 'Follow',
@@ -287,11 +288,11 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleFollow(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor))
-    await facade.onIdle()
+      await actorStorage.isInCollection(botName, 'followers', actor))
+    await handler.onIdle()
     assert.ok(!postInbox.follower3)
   })
   it('can handle an accept activity', async () => {
@@ -304,10 +305,10 @@ describe('BotFacade', () => {
       to: actor.id
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
     const activity = await as2.import({
       type: 'Accept',
       id: 'https://social.example/user/remote1/accept/1',
@@ -315,13 +316,13 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: botId
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       true,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+      await actorStorage.isInCollection(botName, 'pendingFollowing', followActivity))
   })
   it('can ignore an accept activity for a non-existing follow', async () => {
     const actor = await makeActor('accepter2')
@@ -332,10 +333,10 @@ describe('BotFacade', () => {
       object: 'https://botsrodeo.example/user/ok/follow/69',
       to: botId
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
   it('can ignore an accept activity from a blocked account', async () => {
     const actor = await makeActor('accepter3')
@@ -347,8 +348,8 @@ describe('BotFacade', () => {
       to: actor.id
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const activity = await as2.import({
       type: 'Accept',
       id: 'https://social.example/user/accepter3/accept/1',
@@ -356,10 +357,10 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: botId
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
 
   it('can ignore an accept activity for a remote follow activity', async () => {
@@ -377,10 +378,10 @@ describe('BotFacade', () => {
       },
       to: ['https://third.example/user/other', 'as:Public']
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
   it('can ignore an accept activity for a follow of a different actor', async () => {
     const actor5 = await makeActor('accepter5')
@@ -393,10 +394,10 @@ describe('BotFacade', () => {
       to: [actor6.id, 'as:Public']
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor5))
+      await actorStorage.isInCollection(botName, 'following', actor5))
     const activity = await as2.import({
       type: 'Accept',
       id: 'https://social.example/user/remote1/accept/1',
@@ -404,16 +405,16 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor5))
+      await actorStorage.isInCollection(botName, 'following', actor5))
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor6))
+      await actorStorage.isInCollection(botName, 'following', actor6))
     assert.equal(
       true,
-      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+      await actorStorage.isInCollection(botName, 'pendingFollowing', followActivity))
   })
   it('can ignore an accept activity for a follow by a different actor', async () => {
     const actor7 = await makeActor('accepter7')
@@ -428,7 +429,7 @@ describe('BotFacade', () => {
     await actorStorage.addToCollection('calculon', 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor7))
+      await actorStorage.isInCollection(botName, 'following', actor7))
     const activity = await as2.import({
       type: 'Accept',
       id: 'https://social.example/user/accepter7/accept/7',
@@ -436,10 +437,10 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAccept(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor7))
+      await actorStorage.isInCollection(botName, 'following', actor7))
     assert.equal(
       false,
       await actorStorage.isInCollection('calculon', 'following', actor7))
@@ -457,10 +458,10 @@ describe('BotFacade', () => {
       to: actor.id
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
     const activity = await as2.import({
       type: 'Reject',
       id: 'https://social.example/user/rejecter1/reject/1',
@@ -468,13 +469,13 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: botId
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+      await actorStorage.isInCollection(botName, 'pendingFollowing', followActivity))
   })
   it('can ignore an reject activity for a non-existing follow', async () => {
     const actor = await makeActor('rejecter2')
@@ -485,10 +486,10 @@ describe('BotFacade', () => {
       object: 'https://botsrodeo.example/user/ok/follow/69',
       to: botId
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
   it('can ignore an reject activity from a blocked account', async () => {
     const actor = await makeActor('rejecter3')
@@ -500,8 +501,8 @@ describe('BotFacade', () => {
       to: actor.id
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const activity = await as2.import({
       type: 'Reject',
       id: 'https://social.example/user/rejecter3/reject/1',
@@ -509,10 +510,10 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: botId
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
 
   it('can ignore an reject activity for a remote follow activity', async () => {
@@ -530,10 +531,10 @@ describe('BotFacade', () => {
       },
       to: ['https://third.example/user/other', 'as:Public']
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
   it('can ignore an reject activity for a follow of a different actor', async () => {
     const actor5 = await makeActor('rejecter5')
@@ -546,10 +547,10 @@ describe('BotFacade', () => {
       to: [actor6.id, 'as:Public']
     })
     await objectStorage.create(followActivity)
-    await actorStorage.addToCollection('ok', 'pendingFollowing', followActivity)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor5))
+      await actorStorage.isInCollection(botName, 'following', actor5))
     const activity = await as2.import({
       type: 'Reject',
       id: 'https://social.example/user/rejecter5/reject/1',
@@ -557,16 +558,16 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor5))
+      await actorStorage.isInCollection(botName, 'following', actor5))
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor6))
+      await actorStorage.isInCollection(botName, 'following', actor6))
     assert.equal(
       true,
-      await actorStorage.isInCollection('ok', 'pendingFollowing', followActivity))
+      await actorStorage.isInCollection(botName, 'pendingFollowing', followActivity))
   })
   it('can ignore an reject activity for a follow by a different actor', async () => {
     const actor7 = await makeActor('rejecter7')
@@ -581,7 +582,7 @@ describe('BotFacade', () => {
     await actorStorage.addToCollection('calculon', 'pendingFollowing', followActivity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor7))
+      await actorStorage.isInCollection(botName, 'following', actor7))
     const activity = await as2.import({
       type: 'Reject',
       id: 'https://social.example/user/rejecter7/reject/7',
@@ -589,10 +590,10 @@ describe('BotFacade', () => {
       object: followActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleReject(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor7))
+      await actorStorage.isInCollection(botName, 'following', actor7))
     assert.equal(
       false,
       await actorStorage.isInCollection('calculon', 'following', actor7))
@@ -605,7 +606,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '_SivlqjrNpdV3KOJ6cC3L'
       }),
@@ -621,12 +622,12 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', activity)
     )
-    await facade.onIdle()
+    await handler.onIdle()
     assert.equal(postInbox.liker1, 1)
   })
   it('can ignore a like activity for a remote object', async () => {
@@ -639,7 +640,7 @@ describe('BotFacade', () => {
       object: objectId,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(objectId, 'likes', activity)
@@ -654,7 +655,7 @@ describe('BotFacade', () => {
       object: 'https://botsrodeo.example/user/ok/note/doesnotexist',
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(activity.object?.first.id, 'likes', activity)
@@ -665,7 +666,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'wpOmBSs04osbTtYoR9C8p'
       }),
@@ -674,7 +675,7 @@ describe('BotFacade', () => {
       to: 'as:Public'
     })
     await objectStorage.create(note)
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const activity = await as2.import({
       type: 'Like',
       actor: actor.id,
@@ -682,7 +683,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await actorStorage.isInCollection(note.id, 'likes', activity)
@@ -693,7 +694,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '9FZgbPv3G6MYKGPir0eI6'
       }),
@@ -710,7 +711,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -721,7 +722,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: formatter.format({ username: 'other' }),
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'p8YbioA43kgZR41N3-tb2'
       }),
@@ -737,7 +738,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -748,7 +749,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'TyCJRI4aMmW2KWtDZSCVM'
       }),
@@ -764,8 +765,8 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -776,7 +777,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '49s-F59oxQ6dX4SFiCqNg'
       }),
@@ -799,8 +800,8 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity1)
-    await facade.handleLike(activity2)
+    await handler.handleActivity(bot, activity1)
+    await handler.handleActivity(bot, activity2)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity2)
@@ -811,7 +812,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'odQN6GR4v71ZxN1wsstvl'
       }),
@@ -827,12 +828,12 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', activity)
     )
-    await facade.onIdle()
+    await handler.onIdle()
     assert.equal(postInbox.announcer1, 1)
   })
   it('can ignore an announce activity for a remote object', async () => {
@@ -845,7 +846,7 @@ describe('BotFacade', () => {
       object: objectId,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(objectId, 'shares', activity)
@@ -860,7 +861,7 @@ describe('BotFacade', () => {
       object: 'https://botsrodeo.example/user/ok/note/doesnotexist',
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(activity.object?.first.id, 'shares', activity)
@@ -871,7 +872,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'GMvbLj8rKzbtx1kvjCGUm'
       }),
@@ -880,7 +881,7 @@ describe('BotFacade', () => {
       to: 'as:Public'
     })
     await objectStorage.create(note)
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const activity = await as2.import({
       type: 'Announce',
       actor: actor.id,
@@ -888,7 +889,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await actorStorage.isInCollection(note.id, 'shares', activity)
@@ -899,7 +900,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'yWyHTZH9VtAA1ViEl7sil'
       }),
@@ -916,7 +917,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', activity)
@@ -927,7 +928,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: formatter.format({ username: 'other' }),
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'CoI4vcLRjG7f9Sj9yK-6g'
       }),
@@ -943,7 +944,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', activity)
@@ -954,7 +955,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'ndzHHtejBL83v3iiqsl4L'
       }),
@@ -970,8 +971,8 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', activity)
@@ -982,7 +983,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '7AAsKT9oKqM3PnXELNYB7'
       }),
@@ -1005,8 +1006,8 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity1)
-    await facade.handleAnnounce(activity2)
+    await handler.handleActivity(bot, activity1)
+    await handler.handleActivity(bot, activity2)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', activity2)
@@ -1014,8 +1015,8 @@ describe('BotFacade', () => {
   })
   it('can handle a block activity', async () => {
     const actor = await makeActor('blocker1')
-    await actorStorage.addToCollection('ok', 'followers', actor)
-    await actorStorage.addToCollection('ok', 'following', actor)
+    await actorStorage.addToCollection(botName, 'followers', actor)
+    await actorStorage.addToCollection(botName, 'following', actor)
     const activity = await as2.import({
       type: 'Block',
       id: 'https://social.example/user/blocker1/block/1',
@@ -1023,17 +1024,17 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleBlock(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor))
+      await actorStorage.isInCollection(botName, 'followers', actor))
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'following', actor))
+      await actorStorage.isInCollection(botName, 'following', actor))
   })
   it('can handle a block activity for a pending user', async () => {
     const actor = await makeActor('blocker2')
-    await actorStorage.addToCollection('ok', 'pendingFollowing', actor)
+    await actorStorage.addToCollection(botName, 'pendingFollowing', actor)
     const activity = await as2.import({
       type: 'Block',
       id: 'https://social.example/user/blocker2/block/1',
@@ -1041,10 +1042,10 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleBlock(activity)
+    await handler.handleActivity(bot, activity)
     assert.equal(
       false,
-      await actorStorage.isInCollection('ok', 'pendingFollowing', actor))
+      await actorStorage.isInCollection(botName, 'pendingFollowing', actor))
   })
   it('can handle a flag activity for an actor', async () => {
     const actor = await makeActor('flagger1')
@@ -1055,14 +1056,14 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, formatter.format({ server: true })]
     })
-    await facade.handleFlag(activity)
+    await handler.handleActivity(bot, activity)
   })
   it('can handle a flag activity for an object', async () => {
     const actor = await makeActor('flagger2')
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'h3q3QZy2BzYwX7a4vJ5v3'
       }),
@@ -1078,7 +1079,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleFlag(activity)
+    await handler.handleActivity(bot, activity)
   })
   it('can handle an undo for an unrecognized activity type', async () => {
     const actor = await makeActor('undoer1')
@@ -1102,14 +1103,14 @@ describe('BotFacade', () => {
       },
       to: botId
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
   })
   it('can handle an undo for a like activity', async () => {
     const actor = await makeActor('undoer2')
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'aQ8TL9jHhudjiQSqE8tYN'
       }),
@@ -1125,7 +1126,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -1143,7 +1144,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -1153,7 +1154,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'elgLDhn0kty204Tk8rcMD'
       }),
@@ -1170,7 +1171,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(likeActivity)
+    await handler.handleActivity(bot, likeActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1186,7 +1187,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1207,7 +1208,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a like activity of a non-existent object', async () => {
@@ -1225,7 +1226,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a like activity of an unreadable object', async () => {
@@ -1233,7 +1234,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'C-pFLhIGnM1XlpmXgNlfW'
       }),
@@ -1255,16 +1256,16 @@ describe('BotFacade', () => {
       },
       to: [botId]
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a like activity of a blocked actor', async () => {
     const actor = await makeActor('undoer7')
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'rV_iftsHDMdAQBqfgg8DD'
       }),
@@ -1286,14 +1287,14 @@ describe('BotFacade', () => {
       },
       to: [botId]
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a like activity that has already been undone', async () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'KxQLHLAENW_CpMycvcpx4'
       }),
@@ -1310,7 +1311,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(likeActivity)
+    await handler.handleActivity(bot, likeActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1328,7 +1329,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1346,14 +1347,14 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(duplicateActivity)
+    await handler.handleActivity(bot, duplicateActivity)
     assert.ok(true)
   })
   it('can handle an undo for a like activity followed by another like', async () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'LE2yKAebFSmMqSjN6naLl'
       }),
@@ -1370,7 +1371,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(likeActivity)
+    await handler.handleActivity(bot, likeActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1388,7 +1389,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1400,7 +1401,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(reLikeActivity)
+    await handler.handleActivity(bot, reLikeActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', reLikeActivity)
@@ -1415,7 +1416,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'nhzIHLcnHgU2l0lMb7dRl'
       }),
@@ -1431,7 +1432,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleLike(likeActivity)
+    await handler.handleActivity(bot, likeActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1443,7 +1444,7 @@ describe('BotFacade', () => {
       object: likeActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', likeActivity)
@@ -1454,7 +1455,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '1lLOwN_Xo6NOitowWyMYM'
       }),
@@ -1470,7 +1471,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(activity)
+    await handler.handleActivity(bot, activity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', activity)
@@ -1488,7 +1489,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'likes', activity)
@@ -1498,7 +1499,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'kmK_TdUg1l8hasDwa7hGo'
       }),
@@ -1515,7 +1516,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(shareActivity)
+    await handler.handleActivity(bot, shareActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1531,7 +1532,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1554,12 +1555,12 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a share activity of a non-existent object', async () => {
     const actor = await makeActor('undoer14')
-    const dne = formatter.format({ username: 'ok', type: 'note', nanoid: 'doesnotexist' })
+    const dne = formatter.format({ username: botName, type: 'note', nanoid: 'doesnotexist' })
     const announceActivityId = nockFormat({ username: 'undoer14', type: 'announce', num: 1, obj: dne })
     const activity = await as2.import({
       type: 'Undo',
@@ -1574,7 +1575,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a share activity of an unreadable object', async () => {
@@ -1582,13 +1583,13 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'mQ--bYVZLm9miMOUrbYU5'
       }),
       type: 'Note',
       content: 'Hello, world!',
-      to: formatter.format({ username: 'ok', collection: 'followers' })
+      to: formatter.format({ username: botName, collection: 'followers' })
     })
     await objectStorage.create(note)
     const announceActivityId = nockFormat({ username: 'undoer15', type: 'announce', num: 1, obj: note.id })
@@ -1605,16 +1606,16 @@ describe('BotFacade', () => {
       },
       to: [botId]
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a share activity of a blocked actor', async () => {
     const actor = await makeActor('undoer16')
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'fbsPvVofkIcWt8HZA7NpK'
       }),
@@ -1637,14 +1638,14 @@ describe('BotFacade', () => {
       },
       to: [botId]
     })
-    await facade.handleUndo(activity)
+    await handler.handleActivity(bot, activity)
     assert.ok(true)
   })
   it('can ignore an undo for a share activity that has already been undone', async () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: '0YpKR9l9ugvaAx2V-WPUd'
       }),
@@ -1661,7 +1662,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(shareActivity)
+    await handler.handleActivity(bot, shareActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1679,7 +1680,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1697,14 +1698,14 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(duplicateActivity)
+    await handler.handleActivity(bot, duplicateActivity)
     assert.ok(true)
   })
   it('can handle an undo for a share activity followed by another share', async () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'DzCmKY2rzy7tWNr7CJvf1'
       }),
@@ -1721,7 +1722,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(shareActivity)
+    await handler.handleActivity(bot, shareActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1739,7 +1740,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1751,7 +1752,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(reShareActivity)
+    await handler.handleActivity(bot, reShareActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', reShareActivity)
@@ -1766,7 +1767,7 @@ describe('BotFacade', () => {
     const note = await as2.import({
       attributedTo: botId,
       id: formatter.format({
-        username: 'ok',
+        username: botName,
         type: 'note',
         nanoid: 'YYTvtiZm4h9J8jMsWS3Gq'
       }),
@@ -1782,7 +1783,7 @@ describe('BotFacade', () => {
       object: note.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleAnnounce(shareActivity)
+    await handler.handleActivity(bot, shareActivity)
     assert.strictEqual(
       true,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1794,7 +1795,7 @@ describe('BotFacade', () => {
       object: shareActivity.id,
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
       await objectStorage.isInCollection(note.id, 'shares', shareActivity)
@@ -1809,7 +1810,7 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleBlock(blockActivity)
+    await handler.handleActivity(bot, blockActivity)
     assert.ok(true)
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1824,7 +1825,7 @@ describe('BotFacade', () => {
       },
       to: botId
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.ok(true)
   })
   it('can handle an undo for a block activity by id', async () => {
@@ -1836,7 +1837,7 @@ describe('BotFacade', () => {
       object: botId,
       to: botId
     })
-    await facade.handleBlock(blockActivity)
+    await handler.handleActivity(bot, blockActivity)
     assert.ok(true)
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1845,7 +1846,7 @@ describe('BotFacade', () => {
       object: blockActivity.id,
       to: botId
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.ok(true)
   })
 
@@ -1859,7 +1860,7 @@ describe('BotFacade', () => {
       object: otherId,
       to: ['as:Public']
     })
-    await facade.handleBlock(blockActivity)
+    await handler.handleActivity(bot, blockActivity)
     assert.ok(true)
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1874,7 +1875,7 @@ describe('BotFacade', () => {
       },
       to: ['as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.ok(true)
   })
   it('can handle an undo for a follow activity', async () => {
@@ -1887,10 +1888,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1905,10 +1906,10 @@ describe('BotFacade', () => {
       },
       to: botId
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
   })
   it('can handle an undo for a follow by id', async () => {
@@ -1922,10 +1923,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1934,10 +1935,10 @@ describe('BotFacade', () => {
       object: followActivityId,
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
   })
   it('can ignore an undo for a follow activity of another user', async () => {
@@ -1951,10 +1952,10 @@ describe('BotFacade', () => {
       object: otherId,
       to: ['as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -1969,7 +1970,7 @@ describe('BotFacade', () => {
       },
       to: ['as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.ok(true)
   })
   it('can ignore an undo for a follow activity by another user', async () => {
@@ -1984,10 +1985,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', other)
+      await actorStorage.isInCollection(botName, 'followers', other)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -2002,10 +2003,10 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', other)
+      await actorStorage.isInCollection(botName, 'followers', other)
     )
   })
   it('can handle an undo for a follow activity followed by another follow', async () => {
@@ -2018,10 +2019,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -2036,10 +2037,10 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const reFollowActivity = await as2.import({
       type: 'Follow',
@@ -2048,10 +2049,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(reFollowActivity)
+    await handler.handleActivity(bot, reFollowActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
   })
   it('can ignore an undo for a follow activity that has already been undone', async () => {
@@ -2064,10 +2065,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       true,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -2082,10 +2083,10 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const duplicateActivity = await as2.import({
       type: 'Undo',
@@ -2100,13 +2101,13 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(duplicateActivity)
+    await handler.handleActivity(bot, duplicateActivity)
     assert.ok(true)
   })
   it('can ignore an undo for a follow activity by a blocked actor', async () => {
     const username = 'undoer29'
     const actor = await makeActor(username)
-    await actorStorage.addToCollection('ok', 'blocked', actor)
+    await actorStorage.addToCollection(botName, 'blocked', actor)
     const followActivity = await as2.import({
       type: 'Follow',
       actor: actor.id,
@@ -2114,10 +2115,10 @@ describe('BotFacade', () => {
       object: botId,
       to: [botId, 'as:Public']
     })
-    await facade.handleFollow(followActivity)
+    await handler.handleActivity(bot, followActivity)
     assert.strictEqual(
       false,
-      await actorStorage.isInCollection('ok', 'followers', actor)
+      await actorStorage.isInCollection(botName, 'followers', actor)
     )
     const undoActivity = await as2.import({
       type: 'Undo',
@@ -2132,7 +2133,7 @@ describe('BotFacade', () => {
       },
       to: [botId, 'as:Public']
     })
-    await facade.handleUndo(undoActivity)
+    await handler.handleActivity(bot, undoActivity)
     assert.ok(true)
   })
 })

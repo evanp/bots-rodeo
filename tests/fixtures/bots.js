@@ -15,5 +15,5 @@ class OKBot extends Bot {
 }
 
 export default {
-  ok: new OKBot()
+  ok: new OKBot('ok')
 }
