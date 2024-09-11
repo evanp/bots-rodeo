@@ -19,6 +19,8 @@ describe('actor collection routes', async () => {
   let reply = null
   let like = null
   let share = null
+  let privateObj = null
+  const privateNanoid = 'Ic3Sa_0xOQKvlPsWU16as'
 
   before(async () => {
     app = await makeApp(databaseUrl, origin, bots)
@@ -88,6 +90,19 @@ describe('actor collection routes', async () => {
       to: [formatter.format({ username }), 'as:Public']
     })
     await objectStorage.addToCollection(obj.id, 'shares', share)
+    privateObj = await as2.import({
+      id: formatter.format({ username, type, nanoid: privateNanoid }),
+      type: uppercase(type),
+      attributedTo: formatter.format({ username }),
+      summaryMap: {
+        en: 'Test object for the object collection routes'
+      },
+      replies: formatter.format({ username, type, nanoid, collection: 'replies' }),
+      likes: formatter.format({ username, type, nanoid, collection: 'likes' }),
+      shares: formatter.format({ username, type, nanoid, collection: 'shares' }),
+      to: formatter.format({ username, collection: 'followers' })
+    })
+    await objectStorage.create(privateObj)
   })
 
   describe('GET /user/{username}/{type}/{nanoid}', async () => {
@@ -348,6 +363,42 @@ describe('actor collection routes', async () => {
       assert.strictEqual(typeof response.body.items, 'object')
       assert.strictEqual(response.body.items.length, 1)
       assert.strictEqual(response.body.items[0], share.id)
+    })
+  })
+
+  describe('Get private object anonymously', async () => {
+    let response = null
+    const url = `/user/${username}/${type}/${privateNanoid}`
+    it('should work without an error', async () => {
+      response = await request(app)
+        .get(url)
+    })
+    it('should return a 403 status', async () => {
+      assert.strictEqual(response.status, 403)
+    })
+  })
+
+  describe('Get private object collection anonymously', async () => {
+    let response = null
+    const url = `/user/${username}/${type}/${privateNanoid}/replies`
+    it('should work without an error', async () => {
+      response = await request(app)
+        .get(url)
+    })
+    it('should return a 403 status', async () => {
+      assert.strictEqual(response.status, 403)
+    })
+  })
+
+  describe('Get private object collection page anonymously', async () => {
+    let response = null
+    const url = `/user/${username}/${type}/${privateNanoid}/replies/1`
+    it('should work without an error', async () => {
+      response = await request(app)
+        .get(url)
+    })
+    it('should return a 403 status', async () => {
+      assert.strictEqual(response.status, 403)
     })
   })
 })
