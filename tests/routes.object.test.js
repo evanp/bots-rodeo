@@ -4,7 +4,7 @@ import { makeApp } from '../lib/app.js'
 import request from 'supertest'
 import bots from './fixtures/bots.js'
 import as2 from 'activitystrea.ms'
-import { nockSetup, nockFormat } from './utils/nock.js'
+import { nockSetup, nockFormat, nockSignature, makeActor } from './utils/nock.js'
 
 const uppercase = (string) => string.charAt(0).toUpperCase() + string.slice(1)
 
@@ -24,8 +24,8 @@ describe('actor collection routes', async () => {
 
   before(async () => {
     app = await makeApp(databaseUrl, origin, bots)
-    const { formatter, objectStorage } = app.locals
-    await nockSetup('https://social.example')
+    const { formatter, objectStorage, actorStorage } = app.locals
+    nockSetup('social.example')
     obj = await as2.import({
       id: formatter.format({ username, type, nanoid }),
       type: uppercase(type),
@@ -103,6 +103,11 @@ describe('actor collection routes', async () => {
       to: formatter.format({ username, collection: 'followers' })
     })
     await objectStorage.create(privateObj)
+    await actorStorage.addToCollection(
+      username,
+      'followers',
+      await makeActor('follower1', 'social.example')
+    )
   })
 
   describe('GET /user/{username}/{type}/{nanoid}', async () => {
@@ -399,6 +404,24 @@ describe('actor collection routes', async () => {
     })
     it('should return a 403 status', async () => {
       assert.strictEqual(response.status, 403)
+    })
+  })
+
+  describe('Get private object with follower', async () => {
+    let response = null
+    const path = `/user/${username}/${type}/${privateNanoid}`
+    const url = `${origin}${path}`
+    const date = new Date().toISOString()
+    const signature = await nockSignature({ username: 'follower1', url, date })
+    it('should work without an error', async () => {
+      response = await request(app)
+        .get(path)
+        .set('Signature', signature)
+        .set('Date', date)
+        .set('Host', 'botsrodeo.test')
+    })
+    it('should return a 200 status', async () => {
+      assert.strictEqual(response.status, 200)
     })
   })
 })
