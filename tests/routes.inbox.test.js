@@ -13,6 +13,7 @@ describe('routes.inbox', async () => {
   const host = 'botsrodeo.test'
   const origin = `https://${host}`
   const databaseUrl = 'sqlite::memory:'
+  const botName = 'ok'
   let app = null
 
   before(async () => {
@@ -22,13 +23,13 @@ describe('routes.inbox', async () => {
 
   describe('can handle an incoming activity', async () => {
     const username = 'actor1'
-    const path = '/user/ok/inbox'
+    const path = `/user/${botName}/inbox`
     const url = `${origin}${path}`
     const date = new Date().toUTCString()
     const activity = await as2.import({
       type: 'Activity',
       actor: nockFormat({ username }),
-      id: nockFormat({ username, type: 'activity' })
+      id: nockFormat({ username, type: 'activity', num: 1 })
     })
     const body = await activity.write()
     const digest = makeDigest(body)
@@ -50,9 +51,21 @@ describe('routes.inbox', async () => {
         .set('Digest', digest)
         .set('Content-Type', 'application/activity+json')
       assert.ok(response)
+      await app.onIdle()
     })
     it('should return a 200 status', async () => {
       assert.strictEqual(response.status, 200)
+    })
+    it('should appear in the inbox', async () => {
+      const { actorStorage } = app.locals
+      assert.strictEqual(
+        true,
+        await actorStorage.isInCollection(
+          botName,
+          'inbox',
+          activity
+        )
+      )
     })
   })
 })
