@@ -9,8 +9,11 @@ class OKBot extends Bot {
     return 'A bot that says "OK" when mentioned.'
   }
 
-  async onMention (object) {
-    await this._context.sendNote('OK', { to: object.attributedTo })
+  async onMention (object, activity) {
+    const attributedTo =
+      object.attributedTo?.first.id ||
+      activity.actor?.first.id
+    await this._context.sendNote('OK', { to: attributedTo })
   }
 }
 
