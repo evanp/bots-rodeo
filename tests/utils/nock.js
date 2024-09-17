@@ -86,6 +86,11 @@ export const makeActor = async (username, domain = 'social.example') =>
       type: 'CryptographicKey',
       owner: `https://${domain}/user/${username}`,
       publicKeyPem: await getPublicKey(username, domain)
+    },
+    url: {
+      type: 'Link',
+      href: `https://${domain}/profile/${username}`,
+      mediaType: 'text/html'
     }
   })
 
@@ -116,6 +121,28 @@ export const postInbox = {}
 
 export const nockSetup = (domain) =>
   nock(`https://${domain}`)
+    .get(/^\/.well-known\/webfinger/)
+    .reply(async (uri, requestBody) => {
+      const parsed = new URL(uri, `https://${domain}`)
+      const resource = parsed.searchParams.get('resource')
+      if (!resource) {
+        return [400, 'Bad Request']
+      }
+      const username = resource.slice(5).split('@')[0]
+      const webfinger = {
+        subject: resource,
+        links: [
+          {
+            rel: 'self',
+            type: 'application/activity+json',
+            href: `https://${domain}/user/${username}`
+          }
+        ]
+      }
+      return [200,
+        JSON.stringify(webfinger),
+        { 'Content-Type': 'application/jrd+json' }]
+    })
     .get(/^\/user\/(\w+)$/)
     .reply(async (uri, requestBody) => {
       const username = uri.match(/^\/user\/(\w+)$/)[1]
