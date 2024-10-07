@@ -7,6 +7,8 @@ import { KeyStorage } from '../lib/keystorage.js'
 import { ActivityPubClient } from '../lib/activitypubclient.js'
 import { nockSetup } from './utils/nock.js'
 
+const AS2 = 'https://www.w3.org/ns/activitystreams#'
+
 describe('microsyntax', async () => {
   const tagNamespace = 'https://tags.example/tag/'
   const origin = 'https://botsrodeo.example'
@@ -50,7 +52,7 @@ describe('microsyntax', async () => {
     })
     it('has correct tag', () => {
       assert.equal(tag.length, 1)
-      assert.equal(tag[0].type, 'Hashtag')
+      assert.equal(tag[0].type, AS2 + 'Hashtag')
       assert.equal(tag[0].name, '#greeting')
       assert.equal(tag[0].href, 'https://tags.example/tag/greeting')
     })
