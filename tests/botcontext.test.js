@@ -43,7 +43,7 @@ describe('BotContext', () => {
     await actorStorage.initialize()
     client = new ActivityPubClient(keyStorage, formatter)
     distributor = new ActivityDistributor(client, formatter, actorStorage)
-    transformer = new Transformer('https://botsrodeo.example/tag', client)
+    transformer = new Transformer('https://botsrodeo.example/tag/', client)
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
@@ -339,5 +339,26 @@ describe('BotContext', () => {
     assert.strictEqual(tag.type, 'https://www.w3.org/ns/activitystreams#Mention')
     assert.strictEqual(tag.href, 'https://social.example/profile/test2')
     await context.onIdle()
+  })
+  it('can send a tag', async () => {
+    const content = 'Thank you Sally! #gratitude'
+    const to = 'as:Public'
+    note = await context.sendNote(content, { to })
+    assert.ok(note)
+    assert.strictEqual(note.content.get(),
+      '<p>Thank you Sally! ' +
+      '<a href="https://botsrodeo.example/tag/gratitude">#gratitude</a></p>')
+    const tag = note.tag.first
+    assert.strictEqual(tag.type, 'https://www.w3.org/ns/activitystreams#Hashtag')
+    assert.strictEqual(tag.name.get(), '#gratitude')
+  })
+  it('can send an url', async () => {
+    const content = 'Check out this link: https://example.com'
+    const to = 'as:Public'
+    note = await context.sendNote(content, { to })
+    assert.ok(note)
+    assert.strictEqual(note.content.get(),
+      '<p>Check out this link: ' +
+      '<a href="https://example.com">https://example.com</a></p>')
   })
 })
