@@ -9,27 +9,10 @@ import { UrlFormatter } from '../lib/urlformatter.js'
 import { ActivityPubClient } from '../lib/activitypubclient.js'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 import { ActorStorage } from '../lib/actorstorage.js'
-import as2 from 'activitystrea.ms'
-import nock from 'nock'
+import { Transformer } from '../lib/microsyntax.js'
+import { nockSetup, postInbox, resetInbox, makeActor, makeObject } from './utils/nock.js'
 
-const makeActor = (username) =>
-  as2.import({
-    id: `https://social.example/user/${username}`,
-    type: 'Person',
-    preferredUsername: username,
-    inbox: `https://social.example/user/${username}/inbox`,
-    outbox: `https://social.example/user/${username}/outbox`,
-    followers: `https://social.example/user/${username}/followers`,
-    following: `https://social.example/user/${username}/following`,
-    liked: `https://social.example/user/${username}/liked`
-  })
-const makeObject = (username, num) =>
-  as2.import({
-    id: `https://social.example/user/${username}/object/${num}`,
-    type: 'Object',
-    attributedTo: `https://social.example/user/${username}`,
-    to: 'https://www.w3.org/ns/activitystreams#Public'
-  })
+import as2 from 'activitystrea.ms'
 
 describe('BotContext', () => {
   let connection = null
@@ -41,11 +24,11 @@ describe('BotContext', () => {
   let client = null
   let distributor = null
   let context = null
-  let postInbox = {}
   let actor3 = null
   let actor5 = null
   let actor6 = null
   let note = null
+  let transformer = null
   before(async () => {
     formatter = new UrlFormatter('https://botsrodeo.example')
     connection = new Sequelize('sqlite::memory:', { logging: false })
@@ -60,41 +43,14 @@ describe('BotContext', () => {
     await actorStorage.initialize()
     client = new ActivityPubClient(keyStorage, formatter)
     distributor = new ActivityDistributor(client, formatter, actorStorage)
+    transformer = new Transformer('https://botsrodeo.example/tag', client)
     await objectStorage.create(await as2.import({
       id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
       type: 'Object',
       attributedTo: formatter.format({ username: 'test1' }),
       to: 'https://www.w3.org/ns/activitystreams#Public'
     }))
-    nock('https://social.example')
-      .get(/\/user\/(\w+)$/)
-      .reply(async (uri, requestBody) => {
-        const username = uri.match(/\/user\/(\w+)$/)[1]
-        const actor = await makeActor(username)
-        const actorText = await actor.write()
-        return [200, actorText, { 'Content-Type': 'application/activity+json' }]
-      })
-      .persist()
-      .post(/\/user\/(\w+)\/inbox$/)
-      .reply(async (uri, requestBody) => {
-        const username = uri.match(/\/user\/(\w+)\/inbox$/)[1]
-        if (username in postInbox) {
-          postInbox[username] += 1
-        } else {
-          postInbox[username] = 1
-        }
-        return [202, 'accepted']
-      })
-      .persist()
-      .get(/\/user\/(\w+)\/object\/(\d+)$/)
-      .reply(async (uri, requestBody) => {
-        const match = uri.match(/\/user\/(\w+)\/object\/(\d+)$/)
-        const username = match[1]
-        const num = match[2]
-        const obj = await makeObject(username, num)
-        const objText = await obj.write()
-        return [200, objText, { 'Content-Type': 'application/activity+json' }]
-      })
+    nockSetup('social.example')
   })
   after(async () => {
     await connection.close()
@@ -109,7 +65,7 @@ describe('BotContext', () => {
     connection = null
   })
   beforeEach(async () => {
-    postInbox = {}
+    resetInbox()
   })
   it('can initialize', async () => {
     context = new BotContext(
@@ -119,7 +75,8 @@ describe('BotContext', () => {
       actorStorage,
       client,
       distributor,
-      formatter
+      formatter,
+      transformer
     )
   })
   it('can get the bot ID', () => {
@@ -159,7 +116,7 @@ describe('BotContext', () => {
     note = await context.sendNote(content, { to })
     assert.ok(note)
     assert.strictEqual(note.type, 'https://www.w3.org/ns/activitystreams#Note')
-    assert.strictEqual(await note.content.get(), content)
+    assert.strictEqual(await note.content.get(), `<p>${content}</p>`)
     const iter = note.attributedTo[Symbol.iterator]()
     const actor = iter.next().value
     assert.strictEqual(actor.id, 'https://botsrodeo.example/user/test1')
@@ -355,5 +312,32 @@ describe('BotContext', () => {
     } catch (error) {
       assert.ok(true)
     }
+  })
+  it('can send a reply', async () => {
+    const actor3 = await makeActor('test3')
+    const object = await makeObject('test7', 'Note', 1)
+    const content = '@test2@social.example hello back'
+    const to = [actor3.id, 'as:Public']
+    const inReplyTo = object.id
+    note = await context.sendNote(content, { to, inReplyTo })
+    assert.ok(note)
+    assert.strictEqual(note.type, 'https://www.w3.org/ns/activitystreams#Note')
+    assert.strictEqual(await note.content.get(),
+      '<p>' +
+      '<a href="https://social.example/profile/test2">' +
+      '@test2@social.example' +
+      '</a> hello back</p>')
+    const iter = note.attributedTo[Symbol.iterator]()
+    const actor = iter.next().value
+    assert.strictEqual(actor.id, 'https://botsrodeo.example/user/test1')
+    const iter2 = note.to[Symbol.iterator]()
+    const addressee = iter2.next().value
+    assert.strictEqual(addressee.id, actor3.id)
+    assert.strictEqual(typeof note.published, 'object')
+    assert.strictEqual(typeof note.id, 'string')
+    const tag = note.tag.first
+    assert.strictEqual(tag.type, 'https://www.w3.org/ns/activitystreams#Mention')
+    assert.strictEqual(tag.href, 'https://social.example/profile/test2')
+    await context.onIdle()
   })
 })

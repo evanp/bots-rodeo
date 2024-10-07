@@ -116,8 +116,15 @@ export const makeTransitive = (username, type, num, obj, domain = 'social.exampl
   })
 
 const uppercase = (str) => str.charAt(0).toUpperCase() + str.slice(1)
+const lowercase = (str) => str.charAt(0).toLowerCase() + str.slice(1)
 
 export const postInbox = {}
+
+export const resetInbox = () => {
+  for (const username in postInbox) {
+    postInbox[username] = 0
+  }
+}
 
 export const nockSetup = (domain) =>
   nock(`https://${domain}`)
@@ -212,7 +219,7 @@ export function nockFormat ({ username, type, num, obj, key, domain = 'social.ex
     url = `${url}/publickey`
   } else {
     if (type && num) {
-      url = `${url}/${type}/${num}`
+      url = `${url}/${lowercase(type)}/${num}`
       if (obj) {
         if (obj.startsWith('https://')) {
           url = `${url}/${obj.slice(8)}`
