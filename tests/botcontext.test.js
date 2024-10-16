@@ -10,7 +10,13 @@ import { ActivityPubClient } from '../lib/activitypubclient.js'
 import { ActivityDistributor } from '../lib/activitydistributor.js'
 import { ActorStorage } from '../lib/actorstorage.js'
 import { Transformer } from '../lib/microsyntax.js'
-import { nockSetup, postInbox, resetInbox, makeActor, makeObject } from './utils/nock.js'
+import {
+  nockSetup,
+  postInbox,
+  resetInbox,
+  makeActor,
+  makeObject
+} from './utils/nock.js'
 
 import as2 from 'activitystrea.ms'
 
@@ -44,12 +50,18 @@ describe('BotContext', () => {
     client = new ActivityPubClient(keyStorage, formatter)
     distributor = new ActivityDistributor(client, formatter, actorStorage)
     transformer = new Transformer('https://botsrodeo.example/tag/', client)
-    await objectStorage.create(await as2.import({
-      id: formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' }),
-      type: 'Object',
-      attributedTo: formatter.format({ username: 'test1' }),
-      to: 'https://www.w3.org/ns/activitystreams#Public'
-    }))
+    await objectStorage.create(
+      await as2.import({
+        id: formatter.format({
+          username: 'test1',
+          type: 'object',
+          nanoid: '_pEWsKke-7lACTdM3J_qd'
+        }),
+        type: 'Object',
+        attributedTo: formatter.format({ username: 'test1' }),
+        to: 'https://www.w3.org/ns/activitystreams#Public'
+      })
+    )
     nockSetup('social.example')
   })
   after(async () => {
@@ -93,18 +105,28 @@ describe('BotContext', () => {
     await context.deleteData('key1')
   })
   it('can get a local object', async () => {
-    const id = formatter.format({ username: 'test1', type: 'object', nanoid: '_pEWsKke-7lACTdM3J_qd' })
+    const id = formatter.format({
+      username: 'test1',
+      type: 'object',
+      nanoid: '_pEWsKke-7lACTdM3J_qd'
+    })
     const object = await context.getObject(id)
     assert.ok(object)
     assert.strictEqual(object.id, id)
-    assert.strictEqual(object.type, 'https://www.w3.org/ns/activitystreams#Object')
+    assert.strictEqual(
+      object.type,
+      'https://www.w3.org/ns/activitystreams#Object'
+    )
   })
   it('can get a remote object', async () => {
     const id = 'https://social.example/user/test2/object/1'
     const object = await context.getObject(id)
     assert.ok(object)
     assert.strictEqual(object.id, id)
-    assert.strictEqual(object.type, 'https://www.w3.org/ns/activitystreams#Object')
+    assert.strictEqual(
+      object.type,
+      'https://www.w3.org/ns/activitystreams#Object'
+    )
   })
   it('can send a note', async () => {
     const actor2 = await makeActor('test2')
@@ -169,7 +191,10 @@ describe('BotContext', () => {
     assert.strictEqual(outbox.totalItems, 4)
     const inbox = await actorStorage.getCollection('test1', 'inbox')
     assert.strictEqual(inbox.totalItems, 4)
-    const pendingFollowing = await actorStorage.getCollection('test1', 'pendingFollowing')
+    const pendingFollowing = await actorStorage.getCollection(
+      'test1',
+      'pendingFollowing'
+    )
     assert.strictEqual(pendingFollowing.totalItems, 1)
   })
   it('can unfollow a pending actor', async () => {
@@ -180,7 +205,10 @@ describe('BotContext', () => {
     assert.strictEqual(outbox.totalItems, 5)
     const inbox = await actorStorage.getCollection('test1', 'inbox')
     assert.strictEqual(inbox.totalItems, 5)
-    const pendingFollowing = await actorStorage.getCollection('test1', 'pendingFollowing')
+    const pendingFollowing = await actorStorage.getCollection(
+      'test1',
+      'pendingFollowing'
+    )
     assert.strictEqual(pendingFollowing.totalItems, 0)
   })
   it('can unfollow a followed actor', async () => {
@@ -287,7 +315,10 @@ describe('BotContext', () => {
     assert.strictEqual(inbox.totalItems, 12)
     const copy = await context.getObject(note.id)
     assert.ok(copy)
-    assert.strictEqual(copy.type, 'https://www.w3.org/ns/activitystreams#Tombstone')
+    assert.strictEqual(
+      copy.type,
+      'https://www.w3.org/ns/activitystreams#Tombstone'
+    )
     assert.ok(copy.deleted)
     // FIXME: check for formerType when activitystrea.ms supports it
   })
@@ -322,11 +353,13 @@ describe('BotContext', () => {
     note = await context.sendNote(content, { to, inReplyTo })
     assert.ok(note)
     assert.strictEqual(note.type, 'https://www.w3.org/ns/activitystreams#Note')
-    assert.strictEqual(await note.content.get(),
+    assert.strictEqual(
+      await note.content.get(),
       '<p>' +
-      '<a href="https://social.example/profile/test2">' +
-      '@test2@social.example' +
-      '</a> hello back</p>')
+        '<a href="https://social.example/profile/test2">' +
+        '@test2@social.example' +
+        '</a> hello back</p>'
+    )
     const iter = note.attributedTo[Symbol.iterator]()
     const actor = iter.next().value
     assert.strictEqual(actor.id, 'https://botsrodeo.example/user/test1')
@@ -336,7 +369,10 @@ describe('BotContext', () => {
     assert.strictEqual(typeof note.published, 'object')
     assert.strictEqual(typeof note.id, 'string')
     const tag = note.tag.first
-    assert.strictEqual(tag.type, 'https://www.w3.org/ns/activitystreams#Mention')
+    assert.strictEqual(
+      tag.type,
+      'https://www.w3.org/ns/activitystreams#Mention'
+    )
     assert.strictEqual(tag.href, 'https://social.example/profile/test2')
     await context.onIdle()
   })
@@ -345,11 +381,16 @@ describe('BotContext', () => {
     const to = 'as:Public'
     note = await context.sendNote(content, { to })
     assert.ok(note)
-    assert.strictEqual(note.content.get(),
+    assert.strictEqual(
+      note.content.get(),
       '<p>Thank you Sally! ' +
-      '<a href="https://botsrodeo.example/tag/gratitude">#gratitude</a></p>')
+        '<a href="https://botsrodeo.example/tag/gratitude">#gratitude</a></p>'
+    )
     const tag = note.tag.first
-    assert.strictEqual(tag.type, 'https://www.w3.org/ns/activitystreams#Hashtag')
+    assert.strictEqual(
+      tag.type,
+      'https://www.w3.org/ns/activitystreams#Hashtag'
+    )
     assert.strictEqual(tag.name.get(), '#gratitude')
   })
   it('can send an url', async () => {
@@ -357,8 +398,25 @@ describe('BotContext', () => {
     const to = 'as:Public'
     note = await context.sendNote(content, { to })
     assert.ok(note)
-    assert.strictEqual(note.content.get(),
+    assert.strictEqual(
+      note.content.get(),
       '<p>Check out this link: ' +
-      '<a href="https://example.com">https://example.com</a></p>')
+        '<a href="https://example.com">https://example.com</a></p>'
+    )
+  })
+  it('can get an actor ID from a Webfinger ID', async () => {
+    const webfinger = 'test3@social.example'
+    const actorId = await context.toActorId(webfinger)
+    assert.ok(actorId)
+    assert.strictEqual(typeof actorId, 'string')
+    assert.strictEqual(actorId, 'https://social.example/user/test3')
+  })
+
+  it('can get a Webfinger ID from an actor ID', async () => {
+    const actorId = 'https://social.example/user/test4'
+    const webfinger = await context.toWebfinger(actorId)
+    assert.ok(webfinger)
+    assert.strictEqual(typeof webfinger, 'string')
+    assert.strictEqual(webfinger, 'test4@social.example')
   })
 })
