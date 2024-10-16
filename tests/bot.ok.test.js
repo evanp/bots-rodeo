@@ -71,7 +71,7 @@ describe('OK bot', async () => {
       await app.onIdle()
     })
     it('should return a 200 status', async () => {
-      assert.strictEqual(response.status, 200)
+      assert.strictEqual(response.status, 200, JSON.stringify(response.body))
     })
     it('should deliver the reply to the mentioned actor', async () => {
       assert.strictEqual(postInbox.actor2, 1)
