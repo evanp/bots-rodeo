@@ -13,7 +13,9 @@ class OKBot extends Bot {
     const attributedTo =
       object.attributedTo?.first.id ||
       activity.actor?.first.id
-    await this._context.sendNote('OK', { to: attributedTo })
+    const wf = await this._context.toWebfinger(attributedTo)
+    const content = (wf) ? `${wf} OK` : 'OK'
+    await this._context.sendReply(content, object)
   }
 }
 

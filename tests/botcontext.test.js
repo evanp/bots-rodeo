@@ -20,6 +20,8 @@ import {
 
 import as2 from 'activitystrea.ms'
 
+const AS2_NS = 'https://www.w3.org/ns/activitystreams#'
+
 describe('BotContext', () => {
   let connection = null
   let botDataStorage = null
@@ -418,5 +420,23 @@ describe('BotContext', () => {
     assert.ok(webfinger)
     assert.strictEqual(typeof webfinger, 'string')
     assert.strictEqual(webfinger, 'test4@social.example')
+  })
+
+  it('can reply to a note', async () => {
+    const noteIn = await makeObject('test5', 'Note', 1)
+    const note = await context.sendReply('@test5@social.example OK', noteIn)
+    assert.ok(note)
+    assert.strictEqual(note.type, AS2_NS + 'Note')
+    const actor = note.attributedTo?.first
+    assert.strictEqual(actor.id, 'https://botsrodeo.example/user/test1')
+    const recipients = [
+      'https://social.example/user/test5',
+      'https://www.w3.org/ns/activitystreams#Public'
+    ]
+    for (const addressee in note.to) {
+      assert.ok(recipients.includes(addressee.id))
+    }
+    await context.onIdle()
+    assert.strictEqual(postInbox.test5, 1)
   })
 })
