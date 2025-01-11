@@ -52,6 +52,7 @@ describe('ActivityDistributor', () => {
   let btoSeen = 0
   let bccSeen = 0
   let postInbox = {}
+  let postSignature = null
   let postSharedInbox = {}
   let getActor = {}
   before(async () => {
@@ -110,7 +111,7 @@ describe('ActivityDistributor', () => {
       .post('/user/test1/inbox')
       .reply(function (uri, requestBody) {
         postedTest1Inbox += 1
-        signature = this.req.headers.signature
+        postSignature = signature = this.req.headers.signature
         digest = this.req.headers.digest
         return [202, 'accepted']
       })
@@ -134,7 +135,7 @@ describe('ActivityDistributor', () => {
         if (obj.bto) {
           btoSeen += 1
         }
-        signature = this.req.headers.signature
+        postSignature = signature = this.req.headers.signature
         digest = this.req.headers.digest
         return [202, 'accepted']
       })
@@ -276,6 +277,7 @@ describe('ActivityDistributor', () => {
     postInbox = {}
     postSharedInbox = {}
     getActor = {}
+    postSignature = null
   })
   it('can create an instance', () => {
     distributor = new ActivityDistributor(client, formatter, actorStorage)
@@ -372,9 +374,9 @@ describe('ActivityDistributor', () => {
     await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(postedTest2Inbox, 1)
-    assert.ok(signature)
+    assert.ok(postSignature)
     assert.ok(digest)
-    assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+    assert.match(postSignature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('only sends once to an addressed follower for the public', async () => {
     const activity = await as2.import({
@@ -388,9 +390,9 @@ describe('ActivityDistributor', () => {
     await distributor.onIdle()
     assert.equal(postedTest1Inbox, 0)
     assert.equal(postedTest2Inbox, 1)
-    assert.ok(signature)
+    assert.ok(postSignature)
     assert.ok(digest)
-    assert.match(signature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
+    assert.match(postSignature, /^keyId="https:\/\/botsrodeo\.example\/user\/test0\/publickey",headers="\(request-target\) host date digest",signature=".*",algorithm="rsa-sha256"$/)
   })
   it('does not send bcc or bto over the wire', async () => {
     const activity = await as2.import({
@@ -518,5 +520,25 @@ describe('ActivityDistributor', () => {
     }
     await new Promise((resolve) => setTimeout(resolve, 2000))
     assert.equal(postSharedInbox['flaky.example'], 1)
+  })
+  it('can deliver a single activity to a local account', async () => {
+    const id = formatter.format({
+      username: 'test0',
+      type: 'intransitiveactivity',
+      nanoid: 'Ca45kO_L7haXDXWdqoWHE'
+    })
+    const activity = await as2.import({
+      id,
+      type: 'IntransitiveActivity',
+      actor: formatter.format({ username: 'test0' }),
+      to: formatter.format({ username: 'test1' })
+    })
+    await distributor.distribute(activity, 'test0')
+    await distributor.onIdle()
+    assert.ok(await actorStorage.isInCollection(
+      'test1',
+      'inbox',
+      activity
+    ))
   })
 })
