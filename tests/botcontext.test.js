@@ -439,4 +439,29 @@ describe('BotContext', () => {
     await context.onIdle()
     assert.strictEqual(postInbox.test5, 1)
   })
+
+  it('does local delivery', async () => {
+    const note = await context.sendNote('say OK please',
+      { to: 'https://botsrodeo.example/user/ok' }
+    )
+    await context.onIdle()
+    assert.ok(note)
+    let found = null
+    for await (const item of actorStorage.items('ok', 'inbox')) {
+      const full = await objectStorage.read(item.id)
+      if (full.object?.first?.id === note.id) {
+        found = full
+        break
+      }
+    }
+    assert.ok(found)
+    for await (const item of actorStorage.items('test1', 'inbox')) {
+      const full = await objectStorage.read(item.id)
+      if (full.object?.first?.inReplyTo?.first?.id === note.id) {
+        found = full
+        break
+      }
+    }
+    assert.ok(found)
+  })
 })
